@@ -7,6 +7,7 @@ import { LibraryPage } from './pages/LibraryPage';
 import { DownloadsPage } from './pages/DownloadsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AdminPortalPage } from './pages/AdminPortalPage';
+import { AddAppsAdmin } from './pages/AdminPortalPage';
 import { me, logout } from './api/echoServerClient';
 import { checkInClient } from './api/localAgentClient';
 import { clearToken, getToken } from './auth/sessionStore';
@@ -16,6 +17,8 @@ import { userCan } from './types/auth';
 export type Page = 'login' | 'create' | 'setup' | 'store' | 'library' | 'downloads' | 'settings' | 'admin';
 
 export function App() {
+  const isBuilderWindow = window.location.hash === '#app-builder';
+  if (isBuilderWindow) return <AddAppsAdmin windowMode />;
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [page, setPage] = useState<Page>('login');
   const [loading, setLoading] = useState(true);

@@ -188,3 +188,28 @@ dt { color: #8395a8; text-transform: uppercase; font-size: 12px; } dd { margin: 
 .store-topbar button.active { background: #2e6d9e; color: white; }
 .steam-row-cards { scroll-behavior: smooth; }
 button:disabled { opacity: .55; cursor: not-allowed; }
+
+
+/* Release QA v5 premium product polish */
+.builder-window-shell { min-height: 100vh; background: linear-gradient(180deg, #1b324c, #07111c 52%); }
+.builder-window-topbar { position: sticky; top: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 18px; background: rgba(8, 13, 22, .96); border-bottom: 1px solid #29435e; box-shadow: 0 12px 30px rgba(0,0,0,.35); }
+.builder-window-topbar h1 { margin: 0; font-size: 20px; }
+.builder-window-topbar p { margin: 2px 0 0; color: #91abc3; }
+.add-apps-launcher { display: grid; gap: 18px; }
+.add-apps-launcher-hero { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 22px; border: 1px solid #2d4d68; background: linear-gradient(120deg, #18324e, #0b1726); box-shadow: 0 22px 60px rgba(0,0,0,.32); }
+.add-apps-launcher-hero h2 { margin: 4px 0; font-size: 30px; }
+.add-apps-launcher-hero p { max-width: 780px; color: #a9bbcb; }
+.launcher-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.launcher-actions .primary { background: linear-gradient(180deg, #86bf36, #4f8320); color: white; font-weight: 900; }
+.app-management-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.app-management-card { text-align: left; display: grid; grid-template-columns: 46px 1fr; gap: 10px; align-items: center; background: #13243a; border: 1px solid #29435e; }
+.app-management-card img { width: 46px; height: 46px; object-fit: cover; border-radius: 4px; }
+.app-management-card small { color: #9fb3c8; display: block; margin-top: 4px; }
+.product-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+.product-badges span { background: #203c5b; border: 1px solid #315878; color: #bde4ff; padding: 5px 8px; border-radius: 3px; font-size: 12px; }
+.unsaved-banner { margin: 8px 0; padding: 10px 12px; background: rgba(255, 178, 64, .14); border: 1px solid rgba(255, 178, 64, .42); color: #ffd899; }
+.settings-hero { padding: 22px; background: linear-gradient(90deg, #13263a, #0b1726); border-bottom: 1px solid #26394f; }
+.settings-hero h1 { margin: 4px 0; }
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; padding: 22px; }
+.storage-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; padding: 8px; background: #101827; border: 1px solid #26394f; margin: 8px 0; }
+@media (max-width: 900px) { .add-apps-launcher-hero, .builder-window-topbar { flex-direction: column; align-items: stretch; } .storage-row { grid-template-columns: 1fr; } }

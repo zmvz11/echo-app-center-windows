@@ -110,7 +110,7 @@ export function AdminPortalPage(props: { user: CurrentUser }) {
       <div className="admin-content">
         {tab === 'dashboard' && <AdminDashboard />}
         {tab === 'users' && <UsersAdmin />}
-        {tab === 'addApps' && <AddAppsAdmin />}
+        {tab === 'addApps' && <AddAppsLauncher />}
         {tab === 'releases' && <ReleasesAdmin />}
         {tab === 'clients' && <ClientsAdmin />}
         {tab === 'logs' && <LogsAdmin />}
@@ -160,13 +160,14 @@ function DropZone(props: { title: string; hint: string; type: AppMediaType; pend
   );
 }
 
-function AddAppsAdmin() {
+export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
   const { apps, load, message, setMessage } = useAdminApps();
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState<AppDraft>(blankDraft);
   const [pendingMedia, setPendingMedia] = useState<PendingMedia[]>([]);
   const [releaseDraft, setReleaseDraft] = useState<ReleaseDraft>(blankRelease);
   const [releaseFile, setReleaseFile] = useState<File | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [filter, setFilter] = useState('');
   const selectedApp = apps.find((app) => app.id === selectedId);
   const previewApp = draftToPreview(draft, pendingMedia, selectedApp);
@@ -189,12 +190,24 @@ function AddAppsAdmin() {
 
   useEffect(() => { load(); }, []);
 
+  useEffect(() => {
+    if (!props.windowMode) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      if (!dirty) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty, props.windowMode]);
+
   function resetBuilder() {
     setSelectedId('');
     setDraft(blankDraft);
     setReleaseDraft(blankRelease);
     setReleaseFile(null);
     setPendingMedia([]);
+    setDirty(false);
     setMessage('New app template opened. Fill the Store page and click Post App when ready.');
   }
 
@@ -204,12 +217,17 @@ function AddAppsAdmin() {
     setReleaseDraft(blankRelease);
     setReleaseFile(null);
     setPendingMedia([]);
+    setDirty(false);
     setMessage(`Editing ${app.name}. Changes are not live until you save or post.`);
   }
 
   function addPending(item: PendingMedia) {
+    setDirty(true);
     setPendingMedia((current) => item.type === 'screenshot' ? [...current, { ...item, sortOrder: current.filter((i) => i.type === 'screenshot').length }] : [...current.filter((i) => i.type !== item.type), item]);
   }
+
+  function markDirtyDraft(next: AppDraft) { setDirty(true); setDraft(next); }
+  function closeBuilderWindow() { if (dirty && !window.confirm('You have unsaved app changes. Close the builder anyway?')) return; void window.echoDesktop?.closeBuilderWindow?.(); if (!window.echoDesktop) window.close(); }
 
   async function saveApp(nextVisibility = draft.visibility) {
     if (!draft.name.trim()) { setMessage('App name is required.'); return; }
@@ -231,6 +249,7 @@ function AddAppsAdmin() {
       }
       setPendingMedia([]);
       setReleaseFile(null);
+      setDirty(false);
       setSelectedId(app.id);
       setDraft({ ...draft, visibility: nextVisibility });
       setMessage(nextVisibility === 'published' ? `App posted to the Store.${uploadedMedia ? ` Uploaded ${uploadedMedia} media file(s).` : ''}` : `Draft saved.${uploadedMedia ? ` Uploaded ${uploadedMedia} media file(s).` : ''}`);
@@ -242,7 +261,10 @@ function AddAppsAdmin() {
   }
 
   return (
-    <div className="add-apps-admin">
+    <div className={props.windowMode ? 'add-apps-admin builder-window-shell' : 'add-apps-admin'}>
+      {props.windowMode && <div className="builder-window-topbar"><div><h1>Echo App Builder</h1><p>Build, preview, save, and post a Store listing.</p></div><div className="launcher-actions"><button onClick={() => saveApp('draft')}>Save Draft</button><button className="primary" onClick={() => saveApp('published')}>Post App</button><button onClick={closeBuilderWindow}>Close</button></div></div>}
+      {dirty && <div className="unsaved-banner">Unsaved changes are in this builder window. Save Draft before closing.</div>
+      }
       <header className="add-apps-header">
         <div>
           <span className="eyebrow">Admin Portal</span>
@@ -274,7 +296,7 @@ function AddAppsAdmin() {
         <main className="steam-template-builder">
           <div className="builder-title-row">
             <small>All Apps &gt; {draft.category || 'Category'} &gt;</small>
-            <input className="builder-title-input" placeholder="App title" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value, id: selectedId ? draft.id : slugify(e.target.value) })} />
+            <input className="builder-title-input" placeholder="App title" value={draft.name} onChange={(e) => markDirtyDraft({ ...draft, name: e.target.value, id: selectedId ? draft.id : slugify(e.target.value) })} />
           </div>
 
           <section className="builder-product-grid">
@@ -289,14 +311,14 @@ function AddAppsAdmin() {
             <aside className="builder-store-sidebar">
               <DropZone title="Header / Card Image" hint="600x338 thumbnail" type="card_thumbnail" pending={pendingMedia} existingUrl={cardThumbnailUrl(selectedApp ?? previewApp)} onAdd={addPending} />
               <DropZone title="App Icon" hint="512x512 icon" type="icon" pending={pendingMedia} existingUrl={iconUrl(selectedApp ?? previewApp)} onAdd={addPending} />
-              <label>Short Store Description<textarea value={draft.shortDescription} onChange={(e) => setDraft({ ...draft, shortDescription: e.target.value })} /></label>
+              <label>Short Store Description<textarea value={draft.shortDescription} onChange={(e) => markDirtyDraft({ ...draft, shortDescription: e.target.value })} /></label>
               <dl>
-                <dt>Developer</dt><dd><input value={draft.developer} onChange={(e) => setDraft({ ...draft, developer: e.target.value })} /></dd>
-                <dt>Category</dt><dd><input value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} /></dd>
-                <dt>App ID</dt><dd><input value={draft.id} disabled={Boolean(selectedId)} onChange={(e) => setDraft({ ...draft, id: slugify(e.target.value) })} /></dd>
-                <dt>Platforms</dt><dd><input value={draft.platformsText} onChange={(e) => setDraft({ ...draft, platformsText: e.target.value })} /></dd>
+                <dt>Developer</dt><dd><input value={draft.developer} onChange={(e) => markDirtyDraft({ ...draft, developer: e.target.value })} /></dd>
+                <dt>Category</dt><dd><input value={draft.category} onChange={(e) => markDirtyDraft({ ...draft, category: e.target.value })} /></dd>
+                <dt>App ID</dt><dd><input value={draft.id} disabled={Boolean(selectedId)} onChange={(e) => markDirtyDraft({ ...draft, id: slugify(e.target.value) })} /></dd>
+                <dt>Platforms</dt><dd><input value={draft.platformsText} onChange={(e) => markDirtyDraft({ ...draft, platformsText: e.target.value })} /></dd>
               </dl>
-              <label>Tags<input value={draft.tagsText} onChange={(e) => setDraft({ ...draft, tagsText: e.target.value })} /></label>
+              <label>Tags<input value={draft.tagsText} onChange={(e) => markDirtyDraft({ ...draft, tagsText: e.target.value })} /></label>
               <DropZone title="Library Banner" hint="1920x620" type="library_banner" pending={pendingMedia} existingUrl={libraryBannerUrl(selectedApp ?? previewApp)} onAdd={addPending} />
             </aside>
           </section>
@@ -311,13 +333,13 @@ function AddAppsAdmin() {
               <label>Platform<select value={releaseDraft.platform} onChange={(e) => setReleaseDraft({ ...releaseDraft, platform: e.target.value })}><option>windows-x64</option><option>linux-x64</option></select></label>
               <label>Channel<select value={releaseDraft.channel} onChange={(e) => setReleaseDraft({ ...releaseDraft, channel: e.target.value as ReleaseDraft['channel'] })}><option>stable</option><option>beta</option><option>dev</option></select></label>
               <label>Entrypoint<input value={releaseDraft.entrypoint} onChange={(e) => setReleaseDraft({ ...releaseDraft, entrypoint: e.target.value })} /></label>
-              <label>Package ZIP<input type="file" accept=".zip" onChange={(e) => setReleaseFile(e.target.files?.[0] ?? null)} /></label>
+              <label>Package ZIP<input type="file" accept=".zip" onChange={(e) => { setDirty(true); setReleaseFile(e.target.files?.[0] ?? null); }} /></label>
             </div>
           </section>
 
           <section className="builder-about-section">
             <h2>About This App</h2>
-            <textarea value={draft.fullDescription} onChange={(e) => setDraft({ ...draft, fullDescription: e.target.value })} />
+            <textarea value={draft.fullDescription} onChange={(e) => markDirtyDraft({ ...draft, fullDescription: e.target.value })} />
           </section>
 
           <section className="builder-row-preview">
@@ -328,11 +350,34 @@ function AddAppsAdmin() {
       </div>
 
       <footer className="floating-publish-bar">
-        <label><input type="checkbox" checked={draft.featured} onChange={(e) => setDraft({ ...draft, featured: e.target.checked })} /> Feature on Store homepage</label>
-        <label>Visibility<select value={draft.visibility} onChange={(e) => setDraft({ ...draft, visibility: e.target.value })}><option value="draft">Draft</option><option value="published">Published</option><option value="hidden">Hidden</option><option value="archived">Archived</option></select></label>
+        <label><input type="checkbox" checked={draft.featured} onChange={(e) => markDirtyDraft({ ...draft, featured: e.target.checked })} /> Feature on Store homepage</label>
+        <label>Visibility<select value={draft.visibility} onChange={(e) => markDirtyDraft({ ...draft, visibility: e.target.value })}><option value="draft">Draft</option><option value="published">Published</option><option value="hidden">Hidden</option><option value="archived">Archived</option></select></label>
         <button onClick={() => saveApp('draft')}>Save Draft</button>
         <button className="primary" onClick={() => saveApp('published')}>Post App</button>
       </footer>
+    </div>
+  );
+}
+
+
+function AddAppsLauncher() {
+  const { apps, load, message } = useAdminApps();
+  useEffect(() => { load().catch(() => undefined); }, []);
+  async function openBuilder() {
+    if (window.echoDesktop?.openAppBuilder) {
+      await window.echoDesktop.openAppBuilder();
+      return;
+    }
+    window.open(`${window.location.origin}${window.location.pathname}#app-builder`, 'echo-app-builder', 'width=1600,height=940');
+  }
+  return (
+    <div className="add-apps-launcher">
+      <section className="add-apps-launcher-hero">
+        <div><span className="eyebrow">Admin Portal</span><h2>Add Apps</h2><p>Open the dedicated Echo App Builder window to create a Store listing with drag/drop media, live product-page preview, Save Draft, and Post App.</p><div className="product-badges"><span>Separate Builder Window</span><span>Live Store Template</span><span>Drafts</span><span>Readiness Checklist</span></div></div>
+        <div className="launcher-actions"><button className="primary" onClick={openBuilder}>Open Echo App Builder</button><button onClick={() => load()}>Refresh Apps</button></div>
+      </section>
+      {message && <p className="muted">{message}</p>}
+      <section className="panel"><h3>Existing Store Apps</h3>{apps.length === 0 && <p className="muted">No apps exist yet. Open the builder and create the first Store page.</p>}<div className="app-management-grid">{apps.map((app) => <button className="app-management-card" key={app.id} onClick={openBuilder}>{iconUrl(app) ? <img src={iconUrl(app)} /> : <span className="small-icon">E</span>}<span><strong>{app.name}</strong><small>{app.visibility}{app.featured ? ' • Featured' : ''} • {app.category}</small></span></button>)}</div></section>
     </div>
   );
 }
