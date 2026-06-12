@@ -1,3 +1,13 @@
+
+## 1.2.1 - Release QA v9 App Center Button/Layout Fixes
+
+- Fixed Echo App Builder close behavior when unsaved-change protection is active.
+- Fixed Add Apps launcher so existing app cards open the selected app in the builder window.
+- Fixed builder button overlap by changing the release source section to a vertical grid layout.
+- Fixed checkbox/radio sizing that could stretch controls and overlap labels.
+- Added save/post button lockout to prevent double submissions.
+- Added dirty-state checks before switching apps or creating a new blank page.
+
 ## 1.2.0-release-qa-v7
 
 - Added .echoapp package awareness to release uploads.

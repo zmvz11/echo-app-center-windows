@@ -243,3 +243,29 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .permission-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 12px; margin: 12px 0; }
 .check-row { display: flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.04); border-radius: 10px; padding: 8px 10px; }
 .compact-list { margin-top: 12px; }
+
+
+/* Release QA v9 - App Builder button/layout audit fixes */
+input[type="checkbox"], input[type="radio"] { width: auto; min-width: auto; }
+.action-row, .row, .filter-row { flex-wrap: wrap; }
+button { white-space: nowrap; }
+.builder-release-box { display: grid; grid-template-columns: 1fr; align-items: stretch; gap: 18px; background: linear-gradient(90deg, #17304a, #102339); }
+.release-mini-form { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); min-width: 0; width: 100%; }
+.release-source-toggle label, .github-source-box > label, .floating-publish-bar label { display: flex; align-items: center; gap: 8px; margin: 0; }
+.floating-publish-bar { flex-wrap: wrap; }
+.floating-publish-bar select { width: auto; min-width: 150px; }
+.builder-window-shell { height: 100vh; min-height: 100vh; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; }
+.builder-window-shell .builder-window-topbar { position: relative; top: auto; flex-wrap: wrap; }
+.builder-window-shell .builder-window-topbar .launcher-actions { justify-content: flex-end; }
+.builder-window-shell .unsaved-banner { margin: 0; border-left: 0; border-right: 0; }
+.builder-window-shell .add-apps-header { margin: 0; flex-wrap: wrap; align-items: flex-start; }
+.builder-window-shell .add-apps-header > button { flex-shrink: 0; }
+.builder-window-shell .app-template-window { min-height: 0; height: 100%; overflow: hidden; border-left: 0; border-right: 0; }
+.builder-window-shell .app-template-rail { min-height: 0; overflow: auto; }
+.builder-window-shell .steam-template-builder { min-height: 0; padding-bottom: 24px; }
+.builder-window-shell .floating-publish-bar { position: relative; bottom: auto; z-index: 15; }
+@media (max-width: 760px) {
+  .builder-window-shell { overflow: auto; display: block; }
+  .builder-window-shell .app-template-window { height: auto; overflow: visible; }
+  .builder-window-shell .steam-template-builder { overflow: visible; }
+}

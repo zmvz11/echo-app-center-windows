@@ -51,9 +51,10 @@ function createMainWindow(): void {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-function createBuilderWindow(): void {
+function createBuilderWindow(appId?: string): void {
   if (builderWindow && !builderWindow.isDestroyed()) {
     builderWindow.focus();
+    if (appId) builderWindow.webContents.send('echo:builder-select-app', appId);
     return;
   }
 
@@ -72,13 +73,14 @@ function createBuilderWindow(): void {
 
   attachExternalLinkHandler(builderWindow);
   const indexPath = join(__dirname, '../dist/index.html');
-  void builderWindow.loadFile(indexPath, { hash: 'app-builder' });
+  const hash = appId ? `app-builder?appId=${encodeURIComponent(appId)}` : 'app-builder';
+  void builderWindow.loadFile(indexPath, { hash });
   builderWindow.on('closed', () => { builderWindow = null; });
 }
 
 function registerIpc(): void {
-  ipcMain.handle('echo:open-app-builder', () => {
-    createBuilderWindow();
+  ipcMain.handle('echo:open-app-builder', (_event: unknown, appId?: string) => {
+    createBuilderWindow(appId);
     return { ok: true };
   });
   ipcMain.handle('echo:focus-main-window', () => {

@@ -17,8 +17,11 @@ import { userCan } from './types/auth';
 export type Page = 'login' | 'create' | 'setup' | 'store' | 'library' | 'downloads' | 'settings' | 'admin';
 
 export function App() {
-  const isBuilderWindow = window.location.hash === '#app-builder';
-  if (isBuilderWindow) return <AddAppsAdmin windowMode />;
+  const hash = window.location.hash;
+  const isBuilderWindow = hash.startsWith('#app-builder');
+  const builderHashParams = new URLSearchParams(hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '');
+  const initialBuilderAppId = builderHashParams.get('appId') ?? '';
+  if (isBuilderWindow) return <AddAppsAdmin windowMode initialAppId={initialBuilderAppId} />;
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [page, setPage] = useState<Page>('login');
   const [loading, setLoading] = useState(true);

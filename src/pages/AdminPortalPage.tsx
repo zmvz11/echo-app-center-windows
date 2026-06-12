@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { approveRelease, approveUser, checkGitHubSource, createApp, getAdminApps, getAuditLogs, getClients, getPendingUsers, getReleases, getServerRuntimeSettings, importLatestGitHubRelease, publishRelease, rejectRelease, rollbackRelease, saveGitHubSource, setAppFeatured, setAppVisibility, submitRelease, testGitHubSource, updateAppAdmin, uploadMedia, validateReleasePackage, uploadReleasePackage } from '../api/echoServerClient';
 import type { CurrentUser } from '../types/auth';
 import { userCan } from '../types/auth';
@@ -177,7 +177,7 @@ function DropZone(props: { title: string; hint: string; type: AppMediaType; pend
   );
 }
 
-export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
+export function AddAppsAdmin(props: { windowMode?: boolean; initialAppId?: string } = {}) {
   const { apps, load, message, setMessage } = useAdminApps();
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState<AppDraft>(blankDraft);
@@ -189,6 +189,9 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
   const [githubSource, setGithubSource] = useState<GitHubSourceDraft>(blankGitHubSource);
   const [githubResult, setGithubResult] = useState('');
   const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [pendingSelectId, setPendingSelectId] = useState(props.initialAppId ?? '');
+  const allowCloseRef = useRef(false);
   const [filter, setFilter] = useState('');
   const selectedApp = apps.find((app) => app.id === selectedId);
   const previewApp = draftToPreview(draft, pendingMedia, selectedApp);
@@ -214,7 +217,7 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
   useEffect(() => {
     if (!props.windowMode) return;
     const handler = (event: BeforeUnloadEvent) => {
-      if (!dirty) return;
+      if (allowCloseRef.current || !dirty) return;
       event.preventDefault();
       event.returnValue = '';
     };
@@ -222,7 +225,17 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty, props.windowMode]);
 
+  useEffect(() => {
+    if (!props.windowMode || !window.echoDesktop?.onBuilderSelectApp) return;
+    return window.echoDesktop.onBuilderSelectApp((appId) => setPendingSelectId(appId));
+  }, [props.windowMode]);
+
+  function confirmDiscardChanges(): boolean {
+    return !dirty || window.confirm('You have unsaved app changes. Discard them and continue?');
+  }
+
   function resetBuilder() {
+    if (!confirmDiscardChanges()) return;
     setSelectedId('');
     setDraft(blankDraft);
     setReleaseDraft(blankRelease);
@@ -237,6 +250,7 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
   }
 
   function selectApp(app: EchoApp) {
+    if (dirty && selectedId !== app.id && !window.confirm('You have unsaved app changes. Discard them and open this app?')) return;
     setSelectedId(app.id);
     setDraft({ id: app.id, name: app.name, shortDescription: app.shortDescription, fullDescription: app.fullDescription, developer: app.developer, category: app.category, tagsText: app.tags.join(', '), platformsText: (app.platforms ?? ['windows-x64', 'linux-x64']).join(', '), visibility: app.visibility, featured: Boolean(app.featured) });
     setReleaseDraft(blankRelease);
@@ -255,8 +269,25 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
     setPendingMedia((current) => item.type === 'screenshot' ? [...current, { ...item, sortOrder: current.filter((i) => i.type === 'screenshot').length }] : [...current.filter((i) => i.type !== item.type), item]);
   }
 
+  useEffect(() => {
+    if (!pendingSelectId || apps.length === 0) return;
+    const target = apps.find((app) => app.id === pendingSelectId);
+    if (!target) return;
+    selectApp(target);
+    setPendingSelectId('');
+  }, [apps, pendingSelectId]);
+
   function markDirtyDraft(next: AppDraft) { setDirty(true); setDraft(next); }
-  function closeBuilderWindow() { if (dirty && !window.confirm('You have unsaved app changes. Close the builder anyway?')) return; void window.echoDesktop?.closeBuilderWindow?.(); if (!window.echoDesktop) window.close(); }
+  function markDirtyRelease(next: ReleaseDraft) { setDirty(true); setReleaseDraft(next); }
+  function closeBuilderWindow() {
+    if (dirty && !window.confirm('You have unsaved app changes. Close the builder anyway?')) return;
+    allowCloseRef.current = true;
+    setDirty(false);
+    window.setTimeout(() => {
+      void window.echoDesktop?.closeBuilderWindow?.();
+      if (!window.echoDesktop) window.close();
+    }, 0);
+  }
 
 
   function markDirtyGitHub(next: GitHubSourceDraft) { setDirty(true); setGithubSource(next); }
@@ -325,10 +356,12 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
   }
 
   async function saveApp(nextVisibility = draft.visibility) {
+    if (saving) return;
     if (!draft.name.trim()) { setMessage('App name is required.'); return; }
     if (!draft.id.trim()) { setMessage('App ID is required.'); return; }
     if (nextVisibility === 'published' && readiness < requiredChecks.length) { setMessage('Finish the required Store fields before posting this app.'); return; }
     setMessage(nextVisibility === 'published' ? 'Posting app to Store...' : 'Saving draft...');
+    setSaving(true);
     try {
       const payload = { id: draft.id, name: draft.name, shortDescription: draft.shortDescription, fullDescription: draft.fullDescription, developer: draft.developer, category: draft.category, tags: csv(draft.tagsText), platforms: csv(draft.platformsText), visibility: nextVisibility, featured: draft.featured };
       const app = selectedId ? await updateAppAdmin(selectedId, payload) : await createApp(payload);
@@ -362,12 +395,14 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Unknown error.';
       setMessage(`Could not ${nextVisibility === 'published' ? 'post' : 'save'} app: ${detail}`);
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
     <div className={props.windowMode ? 'add-apps-admin builder-window-shell' : 'add-apps-admin'}>
-      {props.windowMode && <div className="builder-window-topbar"><div><h1>Echo App Builder</h1><p>Build, preview, save, and post a Store listing.</p></div><div className="launcher-actions"><button onClick={() => saveApp('draft')}>Save Draft</button><button className="primary" onClick={() => saveApp('published')}>Post App</button><button onClick={closeBuilderWindow}>Close</button></div></div>}
+      {props.windowMode && <div className="builder-window-topbar"><div><h1>Echo App Builder</h1><p>Build, preview, save, and post a Store listing.</p></div><div className="launcher-actions"><button type="button" disabled={saving} onClick={() => saveApp('draft')}>{saving ? 'Saving...' : 'Save Draft'}</button><button type="button" disabled={saving} className="primary" onClick={() => saveApp('published')}>{saving ? 'Posting...' : 'Post App'}</button><button type="button" onClick={closeBuilderWindow}>Close</button></div></div>}
       {dirty && <div className="unsaved-banner">Unsaved changes are in this builder window. Save Draft before closing.</div>
       }
       <header className="add-apps-header">
@@ -376,7 +411,7 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
           <h2>Add Apps</h2>
           <p>Build the app page exactly where the Store preview appears. Drag images into the template, add copy, attach a package, then post the app.</p>
         </div>
-        <button onClick={resetBuilder}>Create New App Page</button>
+        <button type="button" onClick={resetBuilder}>Create New App Page</button>
       </header>
 
       {message && <p className="muted">{message}</p>}
@@ -385,7 +420,7 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
         <aside className="app-template-rail">
           <h3>Existing Apps</h3>
           <input placeholder="Search apps" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          <button className={!selectedId ? 'active' : ''} onClick={resetBuilder}>+ Blank Store Page</button>
+          <button type="button" className={!selectedId ? 'active' : ''} onClick={resetBuilder}>+ Blank Store Page</button>
           <div className="admin-app-list-scroll">
             {filteredApps.map((app) => <button key={app.id} className={`admin-app-row ${selectedId === app.id ? 'active' : ''}`} onClick={() => selectApp(app)}>{iconUrl(app) ? <img src={iconUrl(app)} /> : <span className="small-icon">E</span>}<span><strong>{app.name}</strong><small>{app.visibility}{app.featured ? ' • Featured' : ''}</small></span></button>)}
           </div>
@@ -441,10 +476,10 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
             {releaseSource === 'upload' ? (
               <>
               <div className="release-mini-form">
-                <label>Version<input value={releaseDraft.version} onChange={(e) => setReleaseDraft({ ...releaseDraft, version: e.target.value })} /></label>
-                <label>Platform<select value={releaseDraft.platform} onChange={(e) => setReleaseDraft({ ...releaseDraft, platform: e.target.value })}><option>windows-x64</option><option>linux-x64</option></select></label>
-                <label>Channel<select value={releaseDraft.channel} onChange={(e) => setReleaseDraft({ ...releaseDraft, channel: e.target.value as ReleaseDraft['channel'] })}><option>stable</option><option>beta</option><option>dev</option></select></label>
-                <label>Entrypoint<input value={releaseDraft.entrypoint} onChange={(e) => setReleaseDraft({ ...releaseDraft, entrypoint: e.target.value })} /></label>
+                <label>Version<input value={releaseDraft.version} onChange={(e) => markDirtyRelease({ ...releaseDraft, version: e.target.value })} /></label>
+                <label>Platform<select value={releaseDraft.platform} onChange={(e) => markDirtyRelease({ ...releaseDraft, platform: e.target.value })}><option>windows-x64</option><option>linux-x64</option></select></label>
+                <label>Channel<select value={releaseDraft.channel} onChange={(e) => markDirtyRelease({ ...releaseDraft, channel: e.target.value as ReleaseDraft['channel'] })}><option>stable</option><option>beta</option><option>dev</option></select></label>
+                <label>Entrypoint<input value={releaseDraft.entrypoint} onChange={(e) => markDirtyRelease({ ...releaseDraft, entrypoint: e.target.value })} /></label>
                 <label>Package File<input type="file" accept=".zip,.echoapp" onChange={(e) => chooseReleasePackage(e.target.files?.[0] ?? null)} /></label>
               </div>
               {packageValidation && <div className="github-status-card"><strong>Package Validation</strong><p>{packageValidation}</p></div>}
@@ -465,7 +500,7 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
                 </div>
                 <label><input type="checkbox" checked={githubSource.includePrereleases} onChange={(e) => markDirtyGitHub({ ...githubSource, includePrereleases: e.target.checked })} /> Include prerelease GitHub releases</label>
                 <label><input type="checkbox" checked={githubSource.autoImport} onChange={(e) => markDirtyGitHub({ ...githubSource, autoImport: e.target.checked })} /> Import latest GitHub release as a draft package when saving/posting</label>
-                <div className="action-row"><button onClick={testGitHubReleaseSource}>Test Source</button><button onClick={checkLinkedGitHubSource}>Check Linked Source</button><button onClick={() => importLinkedGitHubRelease()}>Import Latest</button></div>
+                <div className="action-row"><button type="button" disabled={saving} onClick={testGitHubReleaseSource}>Test Source</button><button type="button" disabled={saving} onClick={checkLinkedGitHubSource}>Check Linked Source</button><button type="button" disabled={saving} onClick={() => importLinkedGitHubRelease()}>Import Latest</button></div>
                 {githubResult && <div className="github-status-card"><strong>GitHub Source</strong><p>{githubResult}</p></div>}
               </div>
             )}
@@ -486,8 +521,8 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
       <footer className="floating-publish-bar">
         <label><input type="checkbox" checked={draft.featured} onChange={(e) => markDirtyDraft({ ...draft, featured: e.target.checked })} /> Feature on Store homepage</label>
         <label>Visibility<select value={draft.visibility} onChange={(e) => markDirtyDraft({ ...draft, visibility: e.target.value })}><option value="draft">Draft</option><option value="published">Published</option><option value="hidden">Hidden</option><option value="archived">Archived</option></select></label>
-        <button onClick={() => saveApp('draft')}>Save Draft</button>
-        <button className="primary" onClick={() => saveApp('published')}>Post App</button>
+        <button type="button" disabled={saving} onClick={() => saveApp('draft')}>{saving ? 'Saving...' : 'Save Draft'}</button>
+        <button type="button" disabled={saving} className="primary" onClick={() => saveApp('published')}>{saving ? 'Posting...' : 'Post App'}</button>
       </footer>
     </div>
   );
@@ -497,21 +532,22 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
 function AddAppsLauncher() {
   const { apps, load, message } = useAdminApps();
   useEffect(() => { load().catch(() => undefined); }, []);
-  async function openBuilder() {
+  async function openBuilder(appId?: string) {
     if (window.echoDesktop?.openAppBuilder) {
-      await window.echoDesktop.openAppBuilder();
+      await window.echoDesktop.openAppBuilder(appId);
       return;
     }
-    window.open(`${window.location.origin}${window.location.pathname}#app-builder`, 'echo-app-builder', 'width=1600,height=940');
+    const hash = appId ? `#app-builder?appId=${encodeURIComponent(appId)}` : '#app-builder';
+    window.open(`${window.location.origin}${window.location.pathname}${hash}`, 'echo-app-builder', 'width=1600,height=940');
   }
   return (
     <div className="add-apps-launcher">
       <section className="add-apps-launcher-hero">
         <div><span className="eyebrow">Admin Portal</span><h2>Add Apps</h2><p>Open the dedicated Echo App Builder window to create a Store listing with drag/drop media, live product-page preview, Save Draft, and Post App.</p><div className="product-badges"><span>Separate Builder Window</span><span>Live Store Template</span><span>Drafts</span><span>Readiness Checklist</span></div></div>
-        <div className="launcher-actions"><button className="primary" onClick={openBuilder}>Open Echo App Builder</button><button onClick={() => load()}>Refresh Apps</button></div>
+        <div className="launcher-actions"><button type="button" className="primary" onClick={() => openBuilder()}>Open Echo App Builder</button><button type="button" onClick={() => load()}>Refresh Apps</button></div>
       </section>
       {message && <p className="muted">{message}</p>}
-      <section className="panel"><h3>Existing Store Apps</h3>{apps.length === 0 && <p className="muted">No apps exist yet. Open the builder and create the first Store page.</p>}<div className="app-management-grid">{apps.map((app) => <button className="app-management-card" key={app.id} onClick={openBuilder}>{iconUrl(app) ? <img src={iconUrl(app)} /> : <span className="small-icon">E</span>}<span><strong>{app.name}</strong><small>{app.visibility}{app.featured ? ' • Featured' : ''} • {app.category}</small></span></button>)}</div></section>
+      <section className="panel"><h3>Existing Store Apps</h3>{apps.length === 0 && <p className="muted">No apps exist yet. Open the builder and create the first Store page.</p>}<div className="app-management-grid">{apps.map((app) => <button className="app-management-card" key={app.id} onClick={() => openBuilder(app.id)}>{iconUrl(app) ? <img src={iconUrl(app)} /> : <span className="small-icon">E</span>}<span><strong>{app.name}</strong><small>{app.visibility}{app.featured ? ' • Featured' : ''} • {app.category}</small></span></button>)}</div></section>
     </div>
   );
 }

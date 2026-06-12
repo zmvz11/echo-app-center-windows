@@ -74,4 +74,18 @@ for (const [file, marker, label] of v8Checks) {
   const text = readFileSync(file, 'utf8');
   if (!text.includes(marker)) throw new Error(`Missing ${label} in ${file}`);
 }
+
+const v9AppCenterChecks = [
+  ['src/pages/AdminPortalPage.tsx', 'allowCloseRef', 'builder close button unsaved-change bypass'],
+  ['src/pages/AdminPortalPage.tsx', 'pendingSelectId', 'builder opens selected existing app'],
+  ['src/desktop/main.ts', 'builder-select-app', 'builder selected-app IPC event'],
+  ['src/styles.css', 'Release QA v9 - App Builder button/layout audit fixes', 'button/layout audit CSS fixes'],
+  ['src/styles.css', 'input[type="checkbox"]', 'checkbox/radio width fix'],
+  ['src/styles.css', '.builder-release-box { display: grid;', 'release box overlap fix']
+];
+for (const [file, marker, label] of v9AppCenterChecks) {
+  const text = readFileSync(file, 'utf8');
+  if (!text.includes(marker)) throw new Error(`Missing ${label} in ${file}`);
+}
+
 console.log('Echo App Center final check passed.');

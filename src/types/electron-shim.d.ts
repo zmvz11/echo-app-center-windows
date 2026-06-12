@@ -10,9 +10,10 @@ declare module 'electron' {
 declare global {
   interface Window {
     echoDesktop?: {
-      openAppBuilder: () => Promise<{ ok: boolean }>;
+      openAppBuilder: (appId?: string) => Promise<{ ok: boolean }>;
       focusMainWindow: () => Promise<{ ok: boolean }>;
       closeBuilderWindow: () => Promise<{ ok: boolean }>;
+      onBuilderSelectApp: (callback: (appId: string) => void) => () => void;
     };
   }
 }
