@@ -47,6 +47,8 @@ if (adminPortalText.includes('Apps & Media')) throw new Error('Old Apps & Media 
 const v5Checks = [
   ['src/desktop/main.ts', 'echo:open-app-builder', 'separate Add App Builder desktop window IPC'],
   ['src/pages/AdminPortalPage.tsx', 'Open Echo App Builder', 'Add Apps launcher'],
+  ['src/pages/AdminPortalPage.tsx', 'GitHub Repository Source', 'GitHub source builder UI'],
+  ['src/api/echoServerClient.ts', 'importLatestGitHubRelease', 'GitHub source API client'],
   ['src/pages/AdminPortalPage.tsx', 'Unsaved changes are in this builder window', 'unsaved changes warning'],
   ['src/pages/SettingsPage.tsx', 'Reset Saved Login', 'settings saved-login reset'],
   ['src/pages/SettingsPage.tsx', 'Storage Libraries', 'premium storage settings']
@@ -58,5 +60,18 @@ for (const [file, marker, label] of v5Checks) {
 
 if (!existsSync('README.md')) throw new Error('Missing README.md');
 if (!existsSync('docs/INSTALL.md')) throw new Error('Missing docs/INSTALL.md');
+if (!existsSync('docs/GITHUB_APP_SOURCE.md')) throw new Error('Missing docs/GITHUB_APP_SOURCE.md');
+if (!existsSync('docs/SERVER_NODES.md')) throw new Error('Missing docs/SERVER_NODES.md');
 
+const v8Checks = [
+  ['src/pages/SettingsPage.tsx', 'Server Nodes', 'settings server nodes page'],
+  ['src/pages/SettingsPage.tsx', 'Download Server Location', 'download server location selector'],
+  ['src/auth/sessionStore.ts', 'setDownloadLocationPreference', 'download location preference storage'],
+  ['src/api/echoServerClient.ts', 'approveNodeRequest', 'node approval API client'],
+  ['src/local-agent/index.ts', 'packageDownloadUrl', 'local agent download mirror URL rewrite']
+];
+for (const [file, marker, label] of v8Checks) {
+  const text = readFileSync(file, 'utf8');
+  if (!text.includes(marker)) throw new Error(`Missing ${label} in ${file}`);
+}
 console.log('Echo App Center final check passed.');

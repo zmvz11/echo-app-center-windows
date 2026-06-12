@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { approveRelease, approveUser, createApp, getAdminApps, getAuditLogs, getClients, getPendingUsers, getReleases, getServerRuntimeSettings, publishRelease, rejectRelease, rollbackRelease, setAppFeatured, setAppVisibility, submitRelease, updateAppAdmin, uploadMedia, uploadReleasePackage } from '../api/echoServerClient';
+import { approveRelease, approveUser, checkGitHubSource, createApp, getAdminApps, getAuditLogs, getClients, getPendingUsers, getReleases, getServerRuntimeSettings, importLatestGitHubRelease, publishRelease, rejectRelease, rollbackRelease, saveGitHubSource, setAppFeatured, setAppVisibility, submitRelease, testGitHubSource, updateAppAdmin, uploadMedia, validateReleasePackage, uploadReleasePackage } from '../api/echoServerClient';
 import type { CurrentUser } from '../types/auth';
 import { userCan } from '../types/auth';
 import type { AppMediaType, EchoApp, AppRelease } from '../types/catalog';
@@ -32,6 +32,10 @@ type ReleaseDraft = {
 
 type PendingMedia = { type: AppMediaType; file: File; previewUrl: string; sortOrder: number };
 
+type ReleaseSourceMode = 'upload' | 'github';
+
+type GitHubSourceDraft = { owner: string; repo: string; channel: 'stable' | 'beta' | 'dev'; platform: string; assetPattern: string; entrypoint: string; installType: 'portable' | 'installer'; includePrereleases: boolean; tag: string; autoImport: boolean; };
+
 const blankDraft: AppDraft = {
   id: '',
   name: '',
@@ -52,6 +56,19 @@ const blankRelease: ReleaseDraft = {
   entrypoint: 'echo-app.json',
   installType: 'portable',
   changelog: 'Initial release',
+};
+
+const blankGitHubSource: GitHubSourceDraft = {
+  owner: '',
+  repo: '',
+  channel: 'stable',
+  platform: 'windows-x64',
+  assetPattern: '*.zip',
+  entrypoint: 'echo-app.json',
+  installType: 'portable',
+  includePrereleases: false,
+  tag: '',
+  autoImport: true,
 };
 
 function slugify(value: string): string {
@@ -167,6 +184,10 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
   const [pendingMedia, setPendingMedia] = useState<PendingMedia[]>([]);
   const [releaseDraft, setReleaseDraft] = useState<ReleaseDraft>(blankRelease);
   const [releaseFile, setReleaseFile] = useState<File | null>(null);
+  const [packageValidation, setPackageValidation] = useState('');
+  const [releaseSource, setReleaseSource] = useState<ReleaseSourceMode>('upload');
+  const [githubSource, setGithubSource] = useState<GitHubSourceDraft>(blankGitHubSource);
+  const [githubResult, setGithubResult] = useState('');
   const [dirty, setDirty] = useState(false);
   const [filter, setFilter] = useState('');
   const selectedApp = apps.find((app) => app.id === selectedId);
@@ -184,7 +205,7 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
     { label: 'Library banner', done: Boolean(libraryBannerUrl(previewApp)) },
     { label: 'Card thumbnail', done: Boolean(cardThumbnailUrl(previewApp)) },
     { label: '3 screenshots', done: screenshots(previewApp).length >= 3 },
-    { label: 'Release package', done: Boolean(releaseFile) || Boolean((selectedApp?.releases ?? []).length) },
+    { label: 'Release package or GitHub source', done: Boolean(releaseFile) || (releaseSource === 'github' && Boolean(githubSource.owner && githubSource.repo && githubSource.assetPattern)) || Boolean((selectedApp?.releases ?? []).length) },
   ];
   const readiness = requiredChecks.filter((item) => item.done).length;
 
@@ -206,7 +227,11 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
     setDraft(blankDraft);
     setReleaseDraft(blankRelease);
     setReleaseFile(null);
+    setPackageValidation('');
     setPendingMedia([]);
+    setReleaseSource('upload');
+    setGithubSource(blankGitHubSource);
+    setGithubResult('');
     setDirty(false);
     setMessage('New app template opened. Fill the Store page and click Post App when ready.');
   }
@@ -216,7 +241,11 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
     setDraft({ id: app.id, name: app.name, shortDescription: app.shortDescription, fullDescription: app.fullDescription, developer: app.developer, category: app.category, tagsText: app.tags.join(', '), platformsText: (app.platforms ?? ['windows-x64', 'linux-x64']).join(', '), visibility: app.visibility, featured: Boolean(app.featured) });
     setReleaseDraft(blankRelease);
     setReleaseFile(null);
+    setPackageValidation('');
     setPendingMedia([]);
+    setReleaseSource(app.githubSource ? 'github' : 'upload');
+    setGithubSource(app.githubSource ? { owner: app.githubSource.owner, repo: app.githubSource.repo, channel: app.githubSource.channel, platform: app.githubSource.platform, assetPattern: app.githubSource.assetPattern, entrypoint: app.githubSource.entrypoint, installType: app.githubSource.installType, includePrereleases: Boolean(app.githubSource.includePrereleases), tag: app.githubSource.tag ?? '', autoImport: false } : blankGitHubSource);
+    setGithubResult(app.githubSource?.latestTag ? `GitHub source linked: ${app.githubSource.owner}/${app.githubSource.repo} @ ${app.githubSource.latestTag}` : '');
     setDirty(false);
     setMessage(`Editing ${app.name}. Changes are not live until you save or post.`);
   }
@@ -228,6 +257,72 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
 
   function markDirtyDraft(next: AppDraft) { setDirty(true); setDraft(next); }
   function closeBuilderWindow() { if (dirty && !window.confirm('You have unsaved app changes. Close the builder anyway?')) return; void window.echoDesktop?.closeBuilderWindow?.(); if (!window.echoDesktop) window.close(); }
+
+
+  function markDirtyGitHub(next: GitHubSourceDraft) { setDirty(true); setGithubSource(next); }
+
+  function githubPayload() {
+    return {
+      owner: githubSource.owner.trim(),
+      repo: githubSource.repo.trim(),
+      channel: githubSource.channel,
+      platform: githubSource.platform,
+      assetPattern: githubSource.assetPattern.trim() || '*.zip',
+      entrypoint: githubSource.entrypoint.trim() || 'echo-app.json',
+      installType: githubSource.installType,
+      includePrereleases: githubSource.includePrereleases,
+      ...(githubSource.tag.trim() ? { tag: githubSource.tag.trim() } : {}),
+    };
+  }
+
+  async function testGitHubReleaseSource() {
+    if (!githubSource.owner.trim() || !githubSource.repo.trim()) { setGithubResult('Enter a GitHub owner and repository first.'); return; }
+    setGithubResult('Testing GitHub release source...');
+    try {
+      const result = await testGitHubSource(githubPayload());
+      setGithubResult(`GitHub source OK: ${result.release.tagName} / ${result.release.asset?.name ?? 'no asset selected'}`);
+    } catch (error) {
+      setGithubResult(error instanceof Error ? error.message : 'GitHub source test failed.');
+    }
+  }
+
+  async function checkLinkedGitHubSource() {
+    if (!selectedId) { setGithubResult('Save the app first, then check the linked GitHub source.'); return; }
+    setGithubResult('Checking linked GitHub source...');
+    try {
+      const source = await checkGitHubSource(selectedId, githubPayload());
+      setGithubResult(source.updateAvailable ? `Update available from GitHub: ${source.latestTag} (${source.latestAssetName})` : `GitHub source current: ${source.latestTag}`);
+      await load();
+    } catch (error) {
+      setGithubResult(error instanceof Error ? error.message : 'GitHub source check failed.');
+    }
+  }
+
+  async function importLinkedGitHubRelease(appId = selectedId) {
+    if (!appId) { setGithubResult('Save the app first, then import the latest GitHub release.'); return; }
+    setGithubResult('Importing latest GitHub release...');
+    try {
+      const release = await importLatestGitHubRelease(appId, githubPayload());
+      setGithubResult(`Imported GitHub release ${release.sourceTag ?? release.version} as draft package ${release.packageFileName ?? ''}.`);
+      await load();
+    } catch (error) {
+      setGithubResult(error instanceof Error ? error.message : 'GitHub release import failed.');
+    }
+  }
+
+  async function chooseReleasePackage(file: File | null) {
+    setReleaseFile(file);
+    setDirty(true);
+    if (!file) { setPackageValidation(''); return; }
+    setPackageValidation('Validating package metadata...');
+    try {
+      const report = await validateReleasePackage({ file, version: releaseDraft.version, channel: releaseDraft.channel, platform: releaseDraft.platform, entrypoint: releaseDraft.entrypoint, installType: releaseDraft.installType });
+      const warnings = report.warnings.length ? ` Warnings: ${report.warnings.join(' ')}` : '';
+      setPackageValidation(`${report.packageKind.toUpperCase()} package is ready.${warnings}`);
+    } catch (error) {
+      setPackageValidation(error instanceof Error ? error.message : 'Package validation failed.');
+    }
+  }
 
   async function saveApp(nextVisibility = draft.visibility) {
     if (!draft.name.trim()) { setMessage('App name is required.'); return; }
@@ -244,8 +339,18 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
         await uploadMedia(app.id, { type: item.type, sortOrder: item.sortOrder, file: item.file });
         uploadedMedia += 1;
       }
-      if (releaseFile) {
+      if (releaseFile && releaseSource === 'upload') {
+        await validateReleasePackage({ file: releaseFile, version: releaseDraft.version, channel: releaseDraft.channel, platform: releaseDraft.platform, entrypoint: releaseDraft.entrypoint, installType: releaseDraft.installType });
         await uploadReleasePackage(app.id, { file: releaseFile, version: releaseDraft.version, channel: releaseDraft.channel, platform: releaseDraft.platform, entrypoint: releaseDraft.entrypoint, installType: releaseDraft.installType, changelog: releaseDraft.changelog });
+      }
+      if (releaseSource === 'github') {
+        await saveGitHubSource(app.id, githubPayload());
+        if (githubSource.autoImport || nextVisibility === 'published') {
+          const imported = await importLatestGitHubRelease(app.id, githubPayload());
+          setGithubResult(`GitHub source linked and imported ${imported.sourceTag ?? imported.version}.`);
+        } else {
+          setGithubResult('GitHub source linked. Use Check Source later to detect updates.');
+        }
       }
       setPendingMedia([]);
       setReleaseFile(null);
@@ -325,16 +430,45 @@ export function AddAppsAdmin(props: { windowMode?: boolean } = {}) {
 
           <section className="download-box builder-release-box">
             <div>
-              <h2>Download {draft.name || 'New Echo App'}</h2>
-              <p>Add the package now or publish the Store page first and upload releases later.</p>
+              <h2>Release Source for {draft.name || 'New Echo App'}</h2>
+              <p>Upload a package manually or link a GitHub repository so Echo can detect newer GitHub Releases later.</p>
+              {selectedApp?.githubSource && <span className={`github-source-badge ${selectedApp.githubSource.updateAvailable ? 'update' : ''}`}>{selectedApp.githubSource.updateAvailable ? 'GitHub update available' : 'GitHub linked'}: {selectedApp.githubSource.owner}/{selectedApp.githubSource.repo}</span>}
             </div>
-            <div className="release-mini-form">
-              <label>Version<input value={releaseDraft.version} onChange={(e) => setReleaseDraft({ ...releaseDraft, version: e.target.value })} /></label>
-              <label>Platform<select value={releaseDraft.platform} onChange={(e) => setReleaseDraft({ ...releaseDraft, platform: e.target.value })}><option>windows-x64</option><option>linux-x64</option></select></label>
-              <label>Channel<select value={releaseDraft.channel} onChange={(e) => setReleaseDraft({ ...releaseDraft, channel: e.target.value as ReleaseDraft['channel'] })}><option>stable</option><option>beta</option><option>dev</option></select></label>
-              <label>Entrypoint<input value={releaseDraft.entrypoint} onChange={(e) => setReleaseDraft({ ...releaseDraft, entrypoint: e.target.value })} /></label>
-              <label>Package ZIP<input type="file" accept=".zip" onChange={(e) => { setDirty(true); setReleaseFile(e.target.files?.[0] ?? null); }} /></label>
+            <div className="release-source-toggle">
+              <label><input type="radio" checked={releaseSource === 'upload'} onChange={() => { setDirty(true); setReleaseSource('upload'); }} /> Upload release ZIP</label>
+              <label><input type="radio" checked={releaseSource === 'github'} onChange={() => { setDirty(true); setReleaseSource('github'); }} /> Link GitHub Repository</label>
             </div>
+            {releaseSource === 'upload' ? (
+              <>
+              <div className="release-mini-form">
+                <label>Version<input value={releaseDraft.version} onChange={(e) => setReleaseDraft({ ...releaseDraft, version: e.target.value })} /></label>
+                <label>Platform<select value={releaseDraft.platform} onChange={(e) => setReleaseDraft({ ...releaseDraft, platform: e.target.value })}><option>windows-x64</option><option>linux-x64</option></select></label>
+                <label>Channel<select value={releaseDraft.channel} onChange={(e) => setReleaseDraft({ ...releaseDraft, channel: e.target.value as ReleaseDraft['channel'] })}><option>stable</option><option>beta</option><option>dev</option></select></label>
+                <label>Entrypoint<input value={releaseDraft.entrypoint} onChange={(e) => setReleaseDraft({ ...releaseDraft, entrypoint: e.target.value })} /></label>
+                <label>Package File<input type="file" accept=".zip,.echoapp" onChange={(e) => chooseReleasePackage(e.target.files?.[0] ?? null)} /></label>
+              </div>
+              {packageValidation && <div className="github-status-card"><strong>Package Validation</strong><p>{packageValidation}</p></div>}
+              </>
+            ) : (
+              <div className="github-source-box">
+                <h3>GitHub Repository Source</h3>
+                <p className="muted">Use GitHub Releases as the package source. Example repo: <code>zmvz11/echo-watchtower-sc</code>. Asset pattern should match the release ZIP, such as <code>*windows*.zip</code>.</p>
+                <div className="release-mini-form">
+                  <label>Owner<input value={githubSource.owner} placeholder="zmvz11" onChange={(e) => markDirtyGitHub({ ...githubSource, owner: e.target.value })} /></label>
+                  <label>Repository<input value={githubSource.repo} placeholder="echo-watchtower-sc" onChange={(e) => markDirtyGitHub({ ...githubSource, repo: e.target.value })} /></label>
+                  <label>Asset Pattern<input value={githubSource.assetPattern} placeholder="*windows*.zip" onChange={(e) => markDirtyGitHub({ ...githubSource, assetPattern: e.target.value })} /></label>
+                  <label>Tag Override<input value={githubSource.tag} placeholder="leave blank for latest" onChange={(e) => markDirtyGitHub({ ...githubSource, tag: e.target.value })} /></label>
+                  <label>Platform<select value={githubSource.platform} onChange={(e) => markDirtyGitHub({ ...githubSource, platform: e.target.value })}><option>windows-x64</option><option>linux-x64</option></select></label>
+                  <label>Channel<select value={githubSource.channel} onChange={(e) => markDirtyGitHub({ ...githubSource, channel: e.target.value as GitHubSourceDraft['channel'] })}><option>stable</option><option>beta</option><option>dev</option></select></label>
+                  <label>Entrypoint<input value={githubSource.entrypoint} onChange={(e) => markDirtyGitHub({ ...githubSource, entrypoint: e.target.value })} /></label>
+                  <label>Install Type<select value={githubSource.installType} onChange={(e) => markDirtyGitHub({ ...githubSource, installType: e.target.value as GitHubSourceDraft['installType'] })}><option value="portable">portable</option><option value="installer">installer</option></select></label>
+                </div>
+                <label><input type="checkbox" checked={githubSource.includePrereleases} onChange={(e) => markDirtyGitHub({ ...githubSource, includePrereleases: e.target.checked })} /> Include prerelease GitHub releases</label>
+                <label><input type="checkbox" checked={githubSource.autoImport} onChange={(e) => markDirtyGitHub({ ...githubSource, autoImport: e.target.checked })} /> Import latest GitHub release as a draft package when saving/posting</label>
+                <div className="action-row"><button onClick={testGitHubReleaseSource}>Test Source</button><button onClick={checkLinkedGitHubSource}>Check Linked Source</button><button onClick={() => importLinkedGitHubRelease()}>Import Latest</button></div>
+                {githubResult && <div className="github-status-card"><strong>GitHub Source</strong><p>{githubResult}</p></div>}
+              </div>
+            )}
           </section>
 
           <section className="builder-about-section">
@@ -388,7 +522,7 @@ function ReleasesAdmin() {
   useEffect(() => { load().catch((err) => setMessage(err instanceof Error ? err.message : 'Failed to load releases.')); }, []);
   async function upload() { if (!file) { setMessage('Select a package file first.'); return; } await uploadReleasePackage(appId, { file, version, platform, channel, entrypoint, installType: 'portable', changelog }); setMessage('Release package uploaded as draft.'); await load(); }
   async function transition(id: string, action: 'submit' | 'approve' | 'publish' | 'reject' | 'rollback') { if (action === 'submit') await submitRelease(id); if (action === 'approve') await approveRelease(id); if (action === 'publish') await publishRelease(id); if (action === 'reject') await rejectRelease(id, 'Rejected from admin portal.'); if (action === 'rollback') await rollbackRelease(id); await load(); }
-  return <div><h2>Releases</h2><div className="panel"><label>App<select value={appId} onChange={(e) => setAppId(e.target.value)}>{apps.map((app) => <option key={app.id} value={app.id}>{app.name}</option>)}</select></label><div className="details-grid"><label>Version<input value={version} onChange={(e) => setVersion(e.target.value)} /></label><label>Platform<select value={platform} onChange={(e) => setPlatform(e.target.value)}><option>windows-x64</option><option>linux-x64</option></select></label><label>Channel<select value={channel} onChange={(e) => setChannel(e.target.value)}><option>stable</option><option>beta</option><option>dev</option></select></label><label>Entrypoint<input value={entrypoint} onChange={(e) => setEntrypoint(e.target.value)} /></label></div><label>Package Zip<input type="file" accept=".zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label><label>Changelog<textarea value={changelog} onChange={(e) => setChangelog(e.target.value)} /></label><button onClick={upload}>Upload Release Package</button></div>{message && <p className="muted">{message}</p>}<div className="panel"><h3>Release Queue</h3>{releases.map((rel) => <div className="release-row" key={rel.id}><div><strong>{rel.appId} v{rel.version}</strong><small>{rel.platform} • {rel.channel} • {rel.status}</small></div><div className="action-row"><button onClick={() => transition(rel.id, 'submit')}>Submit</button><button onClick={() => transition(rel.id, 'approve')}>Approve</button><button onClick={() => transition(rel.id, 'publish')}>Publish</button><button onClick={() => transition(rel.id, 'reject')}>Reject</button><button onClick={() => transition(rel.id, 'rollback')}>Rollback</button></div></div>)}</div></div>;
+  return <div><h2>Releases</h2><div className="panel"><label>App<select value={appId} onChange={(e) => setAppId(e.target.value)}>{apps.map((app) => <option key={app.id} value={app.id}>{app.name}</option>)}</select></label><div className="details-grid"><label>Version<input value={version} onChange={(e) => setVersion(e.target.value)} /></label><label>Platform<select value={platform} onChange={(e) => setPlatform(e.target.value)}><option>windows-x64</option><option>linux-x64</option></select></label><label>Channel<select value={channel} onChange={(e) => setChannel(e.target.value)}><option>stable</option><option>beta</option><option>dev</option></select></label><label>Entrypoint<input value={entrypoint} onChange={(e) => setEntrypoint(e.target.value)} /></label></div><label>Package File<input type="file" accept=".zip,.echoapp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label><label>Changelog<textarea value={changelog} onChange={(e) => setChangelog(e.target.value)} /></label><button onClick={upload}>Upload Release Package</button></div>{message && <p className="muted">{message}</p>}<div className="panel"><h3>Release Queue</h3>{releases.map((rel) => <div className="release-row" key={rel.id}><div><strong>{rel.appId} v{rel.version}</strong><small>{rel.platform} • {rel.channel} • {rel.status}</small></div><div className="action-row"><button onClick={() => transition(rel.id, 'submit')}>Submit</button><button onClick={() => transition(rel.id, 'approve')}>Approve</button><button onClick={() => transition(rel.id, 'publish')}>Publish</button><button onClick={() => transition(rel.id, 'reject')}>Reject</button><button onClick={() => transition(rel.id, 'rollback')}>Rollback</button></div></div>)}</div></div>;
 }
 
 function ClientsAdmin() { const [data, setData] = useState<{ clients: any[]; installReports: any[] }>({ clients: [], installReports: [] }); useEffect(() => { getClients().then(setData).catch(() => undefined); }, []); return <div><h2>Client Computers</h2><div className="panel">{data.clients.map((client) => <div className="row" key={client.id}><strong>{client.name}</strong><span>{client.platform}</span><span>{client.lastCheckInAt}</span></div>)}{data.clients.length === 0 && <p className="muted">No clients have checked in.</p>}</div></div>; }

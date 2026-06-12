@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getCatalog } from '../api/echoServerClient';
-import { installApp, launchApp, listInstalledApps, repairApp, uninstallApp, updateApp } from '../api/localAgentClient';
+import { installApp, launchApp, listInstalledApps, openInstallFolder, repairApp, uninstallApp, updateApp, verifyApp } from '../api/localAgentClient';
 import type { EchoApp, InstalledApp } from '../types/catalog';
 import { iconUrl, latestStableRelease, libraryBannerUrl, mediaUrl, screenshots } from '../types/catalog';
 import { getDefaultPlatform } from '../platform/platform';
@@ -11,6 +11,7 @@ export function LibraryPage() {
   const [installed, setInstalled] = useState<InstalledApp[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
   const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
   const [message, setMessage] = useState('');
   const platform = getDefaultPlatform();
 
@@ -24,7 +25,16 @@ export function LibraryPage() {
   useEffect(() => { load().catch((err) => setMessage(err instanceof Error ? err.message : 'Failed to load library.')); }, []);
 
   const installedMap = useMemo(() => new Map(installed.map((app) => [app.appId, app])), [installed]);
-  const visibleApps = apps.filter((app) => filter === 'installed' ? installedMap.has(app.id) : filter === 'updates' ? Boolean(app.releases?.some((r) => r.platform === platform && r.status === 'published' && r.version !== installedMap.get(app.id)?.version)) : true);
+  const visibleApps = apps.filter((app) => {
+    const localApp = installedMap.get(app.id);
+    const matchesSearch = `${app.name} ${app.shortDescription} ${app.category} ${(app.tags ?? []).join(' ')}`.toLowerCase().includes(search.toLowerCase());
+    const hasUpdate = Boolean(app.releases?.some((r) => r.platform === platform && r.status === 'published' && r.version !== localApp?.version));
+    if (!matchesSearch) return false;
+    if (filter === 'installed') return Boolean(localApp);
+    if (filter === 'updates') return hasUpdate;
+    if (filter === 'broken') return localApp?.status === 'broken';
+    return true;
+  });
   const selected = apps.find((app) => app.id === selectedId) ?? visibleApps[0];
   const local = selected ? installedMap.get(selected.id) : undefined;
   const latest = selected ? latestStableRelease(selected, platform) : undefined;
@@ -40,7 +50,8 @@ export function LibraryPage() {
   function statusFor(app: EchoApp): string {
     const localApp = installedMap.get(app.id);
     const appLatest = latestStableRelease(app, platform);
-    if (localApp && appLatest && appLatest.version !== localApp.version) return 'Update queued';
+    if (localApp?.status === 'broken') return 'Needs Repair';
+    if (localApp && appLatest && appLatest.version !== localApp.version) return 'Update Available';
     if (localApp) return 'Installed';
     return 'Available';
   }
@@ -51,8 +62,8 @@ export function LibraryPage() {
     <section className="library-steam-layout">
       <aside className="steam-library-sidebar">
         <div className="library-home">Home</div>
-        <select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Apps and Software</option><option value="installed">Installed</option><option value="updates">Updates</option></select>
-        <input placeholder="Search library" />
+        <select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Apps and Software</option><option value="installed">Installed</option><option value="updates">Updates</option><option value="broken">Needs Repair</option></select>
+        <input placeholder="Search library" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="library-category-title">— ECHO APPS ({visibleApps.length})</div>
         {visibleApps.map((app) => <button key={app.id} className={`library-list-item ${selected.id === app.id ? 'active' : ''}`} onClick={() => setSelectedId(app.id)}>{iconUrl(app) ? <img src={iconUrl(app)} /> : <span className="small-icon">E</span>}<span>{app.name}</span><small>{statusFor(app)}</small></button>)}
       </aside>
@@ -62,7 +73,7 @@ export function LibraryPage() {
         <div className="library-cover-grid">{visibleApps.map((app) => <LibraryTile key={app.id} app={app} status={statusFor(app)} selected={selected.id === app.id} onClick={() => setSelectedId(app.id)} />)}</div>
         <div className="library-detail-drawer">
           <div className="hero">{mediaUrl(selected, 'library_banner') ? <img src={mediaUrl(selected, 'library_banner')} /> : <div className="placeholder-hero">{selected.name}</div>}</div>
-          <div className="detail-header"><div><h1>{selected.name}</h1><p className="muted">{local ? `Installed • v${local.version}` : 'Not installed'} {updateAvailable ? `• Update ${latest?.version} available` : ''}</p></div><div className="action-row">{local ? <button onClick={() => runAction('Launch', () => launchApp(selected.id))}>Launch</button> : <button onClick={() => runAction('Install', () => installApp(selected.id, platform))}>Install</button>}{local && updateAvailable && <button onClick={() => runAction('Update', () => updateApp(selected.id, platform))}>Update</button>}{local && <button onClick={() => runAction('Repair', () => repairApp(selected.id, platform))}>Repair</button>}{local && <button className="danger" onClick={() => runAction('Uninstall', () => uninstallApp(selected.id))}>Uninstall</button>}</div></div>
+          <div className="detail-header"><div><h1>{selected.name}</h1><p className="muted">{local ? `Installed • v${local.version}` : 'Not installed'} {updateAvailable ? `• Update ${latest?.version} available` : ''}</p></div><div className="action-row">{local ? <button onClick={() => runAction('Launch', () => launchApp(selected.id))}>Launch</button> : <button onClick={() => runAction('Install', () => installApp(selected.id, platform))}>Install</button>}{local && updateAvailable && <button onClick={() => runAction('Update', () => updateApp(selected.id, platform))}>Update</button>}{local && <button onClick={() => runAction('Repair', () => repairApp(selected.id, platform))}>Repair</button>}{local && <button onClick={() => runAction('Verify Files', async () => { const report = await verifyApp(selected.id); if (!report.ok) throw new Error(report.issues.join(' ')); return report; })}>Verify Files</button>}{local && <button onClick={() => runAction('Open Folder', () => openInstallFolder(selected.id))}>Open Folder</button>}{local && <button className="danger" onClick={() => runAction('Uninstall', () => uninstallApp(selected.id))}>Uninstall</button>}</div></div>
           {message && <p className={message.includes('completed') ? 'success' : message.includes('failed') || message.includes('error') ? 'error' : 'muted'}>{message}</p>}
           <div className="panel"><h2>Description</h2><p>{selected.fullDescription || selected.shortDescription}</p></div>
           <div className="panel"><h2>Screenshots</h2><div className="screenshots">{screenshots(selected).map((shot) => <img key={shot.id} src={shot.url} />)}{screenshots(selected).length === 0 && <p className="muted">No screenshots uploaded.</p>}</div></div>

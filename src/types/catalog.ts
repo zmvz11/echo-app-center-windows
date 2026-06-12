@@ -1,3 +1,12 @@
+
+export type NodeRole = 'primary' | 'download_mirror' | 'standby_backup' | 'full_backup';
+export type NodePermissionKey = 'canPullPackages' | 'canPullMedia' | 'canServeDownloads' | 'canPullDatabaseBackup' | 'canBePromoted' | 'canRunAdminApi';
+export type NodePermissions = Record<NodePermissionKey, boolean>;
+export type EchoNodeRequest = { id: string; nickname: string; nodeType: NodeRole; baseUrl: string; fingerprint: string; requestedPermissions: NodePermissionKey[]; status: 'pending' | 'approved' | 'rejected'; createdAt: string; reviewedAt?: string; rejectionReason?: string; nodeId?: string; };
+export type EchoNode = { id: string; nickname: string; nodeType: NodeRole; baseUrl: string; fingerprint: string; status: 'approved' | 'disabled' | 'offline'; permissions: NodePermissions; createdAt: string; approvedAt: string; lastSeenAt?: string; lastSyncAt?: string; packagesSynced?: number; mediaSynced?: number; storageFreeBytes?: number; healthMessage?: string; };
+export type DownloadLocation = { id: string; nickname: string; nodeType: NodeRole; baseUrl: string; status: 'online' | 'offline' | 'unknown'; pingMs?: number; lastSyncAt?: string; storageFreeBytes?: number; isPrimary?: boolean; };
+export type NodeAdminState = { nodes: EchoNode[]; requests: EchoNodeRequest[]; syncSettings?: { enabled: boolean; requireApproval: boolean; intervalMinutes: number; allowDownloadMirrors: boolean; allowStandbyBackups: boolean; lastConfiguredAt?: string; } };
+
 export type AppMediaType =
   | 'icon'
   | 'library_banner'
@@ -14,6 +23,8 @@ export type AppMedia = {
   sortOrder: number;
 };
 
+export type PackageValidationReport = { ok: boolean; packageKind: 'zip' | 'echoapp'; fileName: string; checkedAt: string; warnings: string[]; errors: string[]; recommendedManifest?: string; };
+
 export type AppRelease = {
   id: string;
   appId: string;
@@ -26,8 +37,37 @@ export type AppRelease = {
   sizeBytes?: number;
   entrypoint: string;
   installType: 'portable' | 'installer';
+  sourceType?: 'upload' | 'github_release';
+  sourceRepo?: string;
+  sourceTag?: string;
+  sourceAssetName?: string;
   changelog: string[];
   releaseNotes?: string;
+  packageKind?: 'zip' | 'echoapp';
+  validation?: PackageValidationReport;
+};
+
+export type GitHubAppSource = {
+  type: 'github_release';
+  owner: string;
+  repo: string;
+  channel: 'stable' | 'beta' | 'dev';
+  platform: string;
+  assetPattern: string;
+  entrypoint: string;
+  installType: 'portable' | 'installer';
+  includePrereleases?: boolean;
+  tag?: string;
+  latestTag?: string;
+  latestName?: string;
+  latestAssetName?: string;
+  latestAssetUrl?: string;
+  latestAssetSize?: number;
+  latestCheckedAt?: string;
+  updateAvailable?: boolean;
+  lastImportedTag?: string;
+  lastImportedReleaseId?: string;
+  lastError?: string;
 };
 
 export type EchoApp = {
@@ -43,6 +83,7 @@ export type EchoApp = {
   featured?: boolean;
   media: AppMedia[];
   releases?: AppRelease[];
+  githubSource?: GitHubAppSource;
 };
 
 export type StoreSection = {

@@ -213,3 +213,33 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; padding: 22px; }
 .storage-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; padding: 8px; background: #101827; border: 1px solid #26394f; margin: 8px 0; }
 @media (max-width: 900px) { .add-apps-launcher-hero, .builder-window-topbar { flex-direction: column; align-items: stretch; } .storage-row { grid-template-columns: 1fr; } }
+
+.github-source-box { border: 1px solid rgba(87, 154, 255, .24); border-radius: 18px; padding: 16px; background: rgba(7, 13, 24, .58); margin-top: 12px; }
+.github-source-box h3 { margin: 0 0 6px; }
+.release-source-toggle { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 14px; }
+.release-source-toggle label { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 999px; background: rgba(255,255,255,.04); }
+.github-status-card { border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 12px; background: rgba(255,255,255,.045); margin-top: 10px; }
+.github-status-card strong { color: #dbeafe; }
+.github-source-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 9px; background: rgba(87, 154, 255, .14); border: 1px solid rgba(87, 154, 255, .28); color: #bfdbfe; font-size: 12px; }
+.github-source-badge.update { background: rgba(251, 191, 36, .14); border-color: rgba(251, 191, 36, .38); color: #fde68a; }
+
+.download-card progress { width: 100%; height: 12px; }
+.download-card.cancelled { opacity: 0.72; }
+.download-meta { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 10px; }
+.product-badges .update-status, .update-status { border-color: rgba(74, 222, 128, .5); }
+
+/* Release QA v8 - Server Nodes and Download Locations */
+.settings-node-page { grid-column: 1 / -1; }
+.panel-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.node-card { border: 1px solid rgba(129, 167, 255, .22); background: rgba(9, 14, 26, .54); border-radius: 16px; padding: 16px; margin: 12px 0; }
+.node-card.pending { border-color: rgba(255, 197, 87, .35); background: rgba(58, 39, 8, .22); }
+.node-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.node-card-head small, .storage-row small { display: block; color: var(--muted, #91a0b8); margin-top: 4px; }
+.status-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); }
+.status-pill.approved, .status-pill.online { background: rgba(52, 211, 153, .14); border-color: rgba(52, 211, 153, .28); }
+.status-pill.offline, .status-pill.disabled { background: rgba(248, 113, 113, .12); border-color: rgba(248, 113, 113, .28); }
+.status-pill.pending, .status-pill.unknown { background: rgba(251, 191, 36, .14); border-color: rgba(251, 191, 36, .28); }
+.details-grid.compact { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 16px; margin: 12px 0; color: var(--muted, #91a0b8); }
+.permission-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 12px; margin: 12px 0; }
+.check-row { display: flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.04); border-radius: 10px; padding: 8px 10px; }
+.compact-list { margin-top: 12px; }

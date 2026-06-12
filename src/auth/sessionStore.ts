@@ -54,3 +54,20 @@ export function getServerUrl(): string {
 export function setServerUrl(url: string): void {
   localStorage.setItem(SERVER_KEY, url.replace(/\/$/, ''));
 }
+
+
+const DOWNLOAD_LOCATION_ID_KEY = 'echo_app_center_download_location_id';
+const DOWNLOAD_LOCATION_URL_KEY = 'echo_app_center_download_location_url';
+
+export function getDownloadLocationPreference(): { id: string; baseUrl?: string } {
+  return {
+    id: localStorage.getItem(DOWNLOAD_LOCATION_ID_KEY) || 'auto',
+    baseUrl: localStorage.getItem(DOWNLOAD_LOCATION_URL_KEY) || undefined,
+  };
+}
+
+export function setDownloadLocationPreference(id: string, baseUrl?: string): void {
+  localStorage.setItem(DOWNLOAD_LOCATION_ID_KEY, id || 'auto');
+  if (baseUrl) localStorage.setItem(DOWNLOAD_LOCATION_URL_KEY, baseUrl.replace(/\/$/, ''));
+  else localStorage.removeItem(DOWNLOAD_LOCATION_URL_KEY);
+}
