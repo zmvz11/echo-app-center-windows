@@ -1,0 +1,14 @@
+Library
+├─ Left App List
+│  ├─ Search
+│  ├─ Filters
+│  └─ App cards
+└─ Right App Details
+   ├─ Banner
+   ├─ App name
+   ├─ Status/version/channel
+   ├─ Launch/update/repair/uninstall
+   ├─ Description
+   ├─ Screenshots
+   ├─ Changelog
+   └─ Install location
