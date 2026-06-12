@@ -216,20 +216,29 @@ function AddAppsAdmin() {
     if (!draft.id.trim()) { setMessage('App ID is required.'); return; }
     if (nextVisibility === 'published' && readiness < requiredChecks.length) { setMessage('Finish the required Store fields before posting this app.'); return; }
     setMessage(nextVisibility === 'published' ? 'Posting app to Store...' : 'Saving draft...');
-    const payload = { id: draft.id, name: draft.name, shortDescription: draft.shortDescription, fullDescription: draft.fullDescription, developer: draft.developer, category: draft.category, tags: csv(draft.tagsText), platforms: csv(draft.platformsText), visibility: nextVisibility, featured: draft.featured };
-    const app = selectedId ? await updateAppAdmin(selectedId, payload) : await createApp(payload);
-    await setAppFeatured(app.id, draft.featured);
-    await setAppVisibility(app.id, nextVisibility);
-    for (const item of pendingMedia) await uploadMedia(app.id, { type: item.type, sortOrder: item.sortOrder, file: item.file });
-    if (releaseFile) {
-      await uploadReleasePackage(app.id, { file: releaseFile, version: releaseDraft.version, channel: releaseDraft.channel, platform: releaseDraft.platform, entrypoint: releaseDraft.entrypoint, installType: releaseDraft.installType, changelog: releaseDraft.changelog });
+    try {
+      const payload = { id: draft.id, name: draft.name, shortDescription: draft.shortDescription, fullDescription: draft.fullDescription, developer: draft.developer, category: draft.category, tags: csv(draft.tagsText), platforms: csv(draft.platformsText), visibility: nextVisibility, featured: draft.featured };
+      const app = selectedId ? await updateAppAdmin(selectedId, payload) : await createApp(payload);
+      await setAppFeatured(app.id, draft.featured);
+      await setAppVisibility(app.id, nextVisibility);
+      let uploadedMedia = 0;
+      for (const item of pendingMedia) {
+        await uploadMedia(app.id, { type: item.type, sortOrder: item.sortOrder, file: item.file });
+        uploadedMedia += 1;
+      }
+      if (releaseFile) {
+        await uploadReleasePackage(app.id, { file: releaseFile, version: releaseDraft.version, channel: releaseDraft.channel, platform: releaseDraft.platform, entrypoint: releaseDraft.entrypoint, installType: releaseDraft.installType, changelog: releaseDraft.changelog });
+      }
+      setPendingMedia([]);
+      setReleaseFile(null);
+      setSelectedId(app.id);
+      setDraft({ ...draft, visibility: nextVisibility });
+      setMessage(nextVisibility === 'published' ? `App posted to the Store.${uploadedMedia ? ` Uploaded ${uploadedMedia} media file(s).` : ''}` : `Draft saved.${uploadedMedia ? ` Uploaded ${uploadedMedia} media file(s).` : ''}`);
+      await load();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unknown error.';
+      setMessage(`Could not ${nextVisibility === 'published' ? 'post' : 'save'} app: ${detail}`);
     }
-    setPendingMedia([]);
-    setReleaseFile(null);
-    setSelectedId(app.id);
-    setDraft({ ...draft, visibility: nextVisibility });
-    setMessage(nextVisibility === 'published' ? 'App posted to the Store.' : 'Draft saved.');
-    await load();
   }
 
   return (

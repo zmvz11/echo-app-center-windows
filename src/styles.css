@@ -180,3 +180,11 @@ dt { color: #8395a8; text-transform: uppercase; font-size: 12px; } dd { margin: 
   .admin-app-list-scroll { max-height: 180px; }
   .release-mini-form { grid-template-columns: 1fr; }
 }
+
+/* Release QA fixes */
+.checkbox-row { display: flex; align-items: center; gap: 10px; color: #dcecff; }
+.checkbox-row input { width: auto; }
+.small-note { font-size: 12px; margin-top: -6px; }
+.store-topbar button.active { background: #2e6d9e; color: white; }
+.steam-row-cards { scroll-behavior: smooth; }
+button:disabled { opacity: .55; cursor: not-allowed; }

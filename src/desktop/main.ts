@@ -42,9 +42,11 @@ function createMainWindow(): void {
 
 app.setName('Echo App Center');
 
-app.whenReady().then(async () => {
-  await startLocalAgent();
+app.whenReady().then(() => {
   createMainWindow();
+  void startLocalAgent().catch((error: unknown) => {
+    console.error('Echo App Center local agent failed to start:', error);
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

@@ -2,35 +2,65 @@ import { getServerUrl, getToken, setToken, clearToken } from '../auth/sessionSto
 import type { CurrentUser } from '../types/auth';
 import type { EchoApp, AppRelease, StoreSection } from '../types/catalog';
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+const DEFAULT_TIMEOUT_MS = 6000;
+const CONNECT_TIMEOUT_MS = 3000;
+const UPLOAD_TIMEOUT_MS = 60000;
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+function explainMissingRoute(path: string, status: number): string {
+  if (status === 404 && (path.startsWith('/api/store') || path.includes('/media/upload') || path.includes('/apps/admin'))) {
+    return 'Server request failed: 404. Echo App Server is missing the Store/Add Apps API routes. Update and restart Echo App Server, then try again.';
+  }
+  return `Server request failed: ${status}`;
+}
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error('Server connection timed out. Check the IP address, port, and that Echo App Server is running.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
   const token = getToken();
-  const response = await fetch(`${getServerUrl()}${path}`, {
+  const response = await fetchWithTimeout(`${getServerUrl()}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init.headers ?? {}),
     },
-  });
+  }, timeoutMs);
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error ?? `Server request failed: ${response.status}`);
+  if (!response.ok) throw new Error(data.error ?? explainMissingRoute(path, response.status));
   return data as T;
 }
 
-async function multipartRequest<T>(path: string, form: FormData): Promise<T> {
+async function multipartRequest<T>(path: string, form: FormData, timeoutMs = UPLOAD_TIMEOUT_MS): Promise<T> {
   const token = getToken();
-  const response = await fetch(`${getServerUrl()}${path}`, {
+  const response = await fetchWithTimeout(`${getServerUrl()}${path}`, {
     method: 'POST',
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: form,
-  });
+  }, timeoutMs);
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error ?? `Server upload failed: ${response.status}`);
+  if (!response.ok) throw new Error(data.error ?? explainMissingRoute(path, response.status));
   return data as T;
 }
 
 export async function testServerUrl(url: string): Promise<{ product: string; version: string }> {
-  const response = await fetch(`${url.replace(/\/$/, '')}/health`);
+  const response = await fetchWithTimeout(`${url.replace(/\/$/, '')}/health`, {}, CONNECT_TIMEOUT_MS);
   const data = await response.json();
   if (!response.ok || !data.ok) throw new Error('Server did not respond as Echo App Server.');
   return data;
@@ -38,15 +68,15 @@ export async function testServerUrl(url: string): Promise<{ product: string; ver
 
 export async function setupStatus(): Promise<{ needsOwner: boolean }> { return request('/api/setup/status'); }
 
-export async function createOwner(input: { username: string; displayName?: string; password: string }): Promise<CurrentUser> {
+export async function createOwner(input: { username: string; displayName?: string; password: string }, remember = true): Promise<CurrentUser> {
   const data = await request<{ user: CurrentUser; token: string }>('/api/setup/owner', { method: 'POST', body: JSON.stringify(input) });
-  setToken(data.token);
+  setToken(data.token, remember);
   return data.user;
 }
 
-export async function login(input: { username: string; password: string }): Promise<CurrentUser> {
+export async function login(input: { username: string; password: string }, remember = false): Promise<CurrentUser> {
   const data = await request<{ user: CurrentUser; token: string }>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) });
-  setToken(data.token);
+  setToken(data.token, remember);
   return data.user;
 }
 
@@ -55,7 +85,7 @@ export async function register(input: { username: string; displayName?: string; 
 }
 
 export async function me(): Promise<CurrentUser> { const data = await request<{ user: CurrentUser }>('/api/auth/me'); return data.user; }
-export async function logout(): Promise<void> { try { await request('/api/auth/logout', { method: 'POST' }); } finally { clearToken(); } }
+export async function logout(): Promise<void> { try { await request('/api/auth/logout', { method: 'POST' }, 2000); } finally { clearToken(); } }
 
 export async function getCatalog(): Promise<EchoApp[]> { const data = await request<{ apps: EchoApp[] }>('/api/catalog'); return data.apps; }
 export async function getStoreApps(): Promise<EchoApp[]> { const data = await request<{ apps: EchoApp[] }>('/api/store/apps'); return data.apps; }
@@ -115,7 +145,7 @@ export async function uploadReleasePackage(appId: string, input: { file: File; v
   form.set('entrypoint', input.entrypoint);
   form.set('installType', input.installType);
   form.set('changelog', input.changelog);
-  const data = await multipartRequest<{ release: AppRelease }>(`/api/releases/admin/apps/${appId}/releases/upload`, form);
+  const data = await multipartRequest<{ release: AppRelease }>(`/api/releases/admin/apps/${appId}/releases/upload`, form, 120000);
   return data.release;
 }
 

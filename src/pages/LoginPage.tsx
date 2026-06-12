@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { login, setupStatus, testServerUrl } from '../api/echoServerClient';
-import { getServerUrl, setServerUrl } from '../auth/sessionStore';
+import { getRememberedUsername, getRememberLogin, getServerUrl, setRememberedUsername, setRememberLogin, setServerUrl } from '../auth/sessionStore';
 import { validateUsername } from '../auth/usernameRules';
 import type { CurrentUser } from '../types/auth';
 
@@ -30,14 +30,23 @@ export function LoginPage(props: { onLoggedIn: (user: CurrentUser) => void; onCr
   const [protocol, setProtocol] = useState<'http' | 'https'>(initial.protocol);
   const [serverHost, setServerHost] = useState(initial.host);
   const [serverPort, setServerPort] = useState(initial.port);
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(getRememberedUsername());
   const [password, setPassword] = useState('');
+  const [rememberLogin, setRememberLoginState] = useState(getRememberLogin());
   const [error, setError] = useState('');
   const [connectionMessage, setConnectionMessage] = useState('');
   const [connected, setConnected] = useState(false);
+  const [busy, setBusy] = useState(false);
   const fullServerUrl = buildServerUrl(protocol, serverHost, serverPort);
 
+  function updateRemember(next: boolean): void {
+    setRememberLoginState(next);
+    setRememberLogin(next);
+    if (!next) setRememberedUsername('');
+  }
+
   async function connectToServer() {
+    setBusy(true);
     setError('');
     setConnectionMessage('Testing server connection...');
     setServerUrl(fullServerUrl);
@@ -55,25 +64,36 @@ export function LoginPage(props: { onLoggedIn: (user: CurrentUser) => void; onCr
       setConnected(false);
       setConnectionMessage('');
       setError(err instanceof Error ? err.message : 'Could not connect to Echo App Server.');
+    } finally {
+      setBusy(false);
     }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    setBusy(true);
     setError('');
     setServerUrl(fullServerUrl);
     const usernameError = validateUsername(username);
-    if (usernameError) return setError(usernameError);
+    if (usernameError) {
+      setBusy(false);
+      return setError(usernameError);
+    }
     try {
       const status = await setupStatus();
       if (status.needsOwner) {
         props.onNeedsOwner();
         return;
       }
-      const user = await login({ username, password });
+      setRememberLogin(rememberLogin);
+      if (rememberLogin) setRememberedUsername(username);
+      else setRememberedUsername('');
+      const user = await login({ username, password }, rememberLogin);
       props.onLoggedIn(user);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed.');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -100,15 +120,17 @@ export function LoginPage(props: { onLoggedIn: (user: CurrentUser) => void; onCr
             </label>
           </div>
           <label>Full Server URL<input value={fullServerUrl} readOnly /></label>
-          <button type="button" onClick={connectToServer}>Connect to Server</button>
+          <button type="button" onClick={connectToServer} disabled={busy}>{busy ? 'Working...' : 'Connect to Server'}</button>
           {connectionMessage && <p className="success">{connectionMessage}</p>}
         </div>
 
         <h2>Login</h2>
         <label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} /></label>
         <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+        <label className="checkbox-row"><input type="checkbox" checked={rememberLogin} onChange={(e) => updateRemember(e.target.checked)} /> Save login on this device</label>
+        <p className="muted small-note">This saves your username and session token. Echo App Center does not store your password in plain text.</p>
         {error && <p className="error">{error}</p>}
-        <button type="submit">Log In</button>
+        <button type="submit" disabled={busy}>{busy ? 'Logging in...' : 'Log In'}</button>
         <button type="button" className="link-button" onClick={props.onCreateAccount}>Create an account</button>
         {!connected && <p className="muted">The login button also saves and checks the server address above.</p>}
       </form>

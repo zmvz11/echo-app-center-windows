@@ -27,6 +27,21 @@ if (!existsSync('dist-electron/main.js')) {
   throw new Error('Electron build output missing: dist-electron/main.js. Check tsconfig.electron.json rootDir/outDir.');
 }
 if (!existsSync('src/local-agent/index.ts')) throw new Error('Missing local agent.');
+
+const appSourceChecks = [
+  ['src/App.tsx', 'setTimeout', 'startup timeout guard'],
+  ['src/api/echoServerClient.ts', 'fetchWithTimeout', 'server request timeout guard'],
+  ['src/pages/LoginPage.tsx', 'Save login on this device', 'save login checkbox'],
+  ['src/pages/AdminPortalPage.tsx', 'Could not ${nextVisibility', 'post app error handling'],
+  ['src/components/StoreComponents.tsx', 'scrollByCards', 'Store row arrow scrolling'],
+  ['src/pages/StorePage.tsx', 'Store API was unavailable', 'Store API fallback message']
+];
+for (const [file, marker, label] of appSourceChecks) {
+  const text = readFileSync(file, 'utf8');
+  if (!text.includes(marker)) throw new Error(`Missing ${label} in ${file}`);
+}
+const adminPortalText = readFileSync('src/pages/AdminPortalPage.tsx', 'utf8');
+if (adminPortalText.includes('Apps & Media')) throw new Error('Old Apps & Media label still exists.');
 if (!existsSync('README.md')) throw new Error('Missing README.md');
 if (!existsSync('docs/INSTALL.md')) throw new Error('Missing docs/INSTALL.md');
 

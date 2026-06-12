@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import type { EchoApp } from '../types/catalog';
 import { cardThumbnailUrl, iconUrl, latestStableRelease, libraryBannerUrl, screenshots, storeHeroUrl } from '../types/catalog';
 
@@ -7,7 +8,7 @@ export function StoreHero(props: { app: EchoApp; onOpen?: () => void; onAction?:
   const app = props.app;
   const image = storeHeroUrl(app);
   return (
-    <article className="steam-hero" onClick={props.onOpen}>
+    <article className="steam-hero" onClick={props.onOpen} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter') props.onOpen?.(); }}>
       {image ? <img src={image} alt="" /> : <div className="steam-hero-placeholder">{app.name}</div>}
       <div className="steam-hero-info">
         <div className="eyebrow">Featured</div>
@@ -26,7 +27,7 @@ export function StoreAppCard(props: { app: EchoApp; onOpen?: () => void; onActio
   const release = latestStableRelease(props.app);
   const label = props.state === 'launch' ? 'Launch' : props.state === 'update' ? 'Update' : props.state === 'disabled' ? 'Unavailable' : 'Install';
   return (
-    <article className="steam-app-card" onClick={props.onOpen}>
+    <article className="steam-app-card" onClick={props.onOpen} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter') props.onOpen?.(); }}>
       <div className="steam-card-image">{image ? <img src={image} alt="" /> : <span>{props.app.name}</span>}</div>
       <div className="steam-card-body">
         {icon ? <img className="app-icon" src={icon} alt="" /> : <span className="app-icon generated">E</span>}
@@ -72,17 +73,21 @@ export function StoreAppDetail(props: { app: EchoApp; onBack?: () => void; onAct
       </div>
       <div className="download-box">
         <div><h2>{release ? `Download ${app.name}` : `${app.name} is not ready to install`}</h2><p>{release ? `Stable release ${release.version}` : 'Add and publish a release package from the Admin Portal.'}</p></div>
-        <button onClick={props.onAction}>{props.actionLabel ?? (release ? 'Install' : 'No Release')}</button>
+        <button disabled={!release} onClick={props.onAction}>{props.actionLabel ?? (release ? 'Install' : 'No Release')}</button>
       </div>
     </article>
   );
 }
 
-export function StoreSectionRow(props: { title: string; apps: EchoApp[]; onOpen: (app: EchoApp) => void; onAction?: (app: EchoApp) => void }) {
+export function StoreSectionRow(props: { title: string; apps: EchoApp[]; onOpen: (app: EchoApp) => void; onAction?: (app: EchoApp) => void; onSeeMore?: () => void }) {
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  function scrollByCards(direction: -1 | 1): void {
+    rowRef.current?.scrollBy({ left: direction * 720, behavior: 'smooth' });
+  }
   return (
     <section className="steam-row-section">
-      <div className="section-header"><h2>{props.title}</h2><button type="button">See More</button></div>
-      <div className="horizontal-scroller"><button className="scroll-arrow left" type="button">‹</button><div className="steam-row-cards">{props.apps.map((app) => <StoreAppCard key={app.id} app={app} onOpen={() => props.onOpen(app)} onAction={() => props.onAction?.(app)} />)}</div><button className="scroll-arrow right" type="button">›</button></div>
+      <div className="section-header"><h2>{props.title}</h2><button type="button" onClick={() => props.onSeeMore?.() ?? scrollByCards(1)}>See More</button></div>
+      <div className="horizontal-scroller"><button className="scroll-arrow left" type="button" aria-label={`Scroll ${props.title} left`} onClick={() => scrollByCards(-1)}>‹</button><div className="steam-row-cards" ref={rowRef}>{props.apps.map((app) => <StoreAppCard key={app.id} app={app} onOpen={() => props.onOpen(app)} onAction={() => props.onAction?.(app)} />)}</div><button className="scroll-arrow right" type="button" aria-label={`Scroll ${props.title} right`} onClick={() => scrollByCards(1)}>›</button></div>
     </section>
   );
 }
