@@ -1,35 +1,331 @@
-import { useEffect, useState } from 'react';
-import { addMedia, approveRelease, approveUser, createApp, getAdminApps, getAuditLogs, getClients, getPendingUsers, getReleases, getServerRuntimeSettings, publishRelease, rejectRelease, rollbackRelease, submitRelease, uploadMedia, uploadReleasePackage } from '../api/echoServerClient';
+import { useEffect, useMemo, useState } from 'react';
+import { approveRelease, approveUser, createApp, getAdminApps, getAuditLogs, getClients, getPendingUsers, getReleases, getServerRuntimeSettings, publishRelease, rejectRelease, rollbackRelease, setAppFeatured, setAppVisibility, submitRelease, updateAppAdmin, uploadMedia, uploadReleasePackage } from '../api/echoServerClient';
 import type { CurrentUser } from '../types/auth';
 import { userCan } from '../types/auth';
-import type { EchoApp, AppRelease } from '../types/catalog';
+import type { AppMediaType, EchoApp, AppRelease } from '../types/catalog';
+import { cardThumbnailUrl, iconUrl, libraryBannerUrl, screenshots, storeHeroUrl } from '../types/catalog';
+import { StoreAppCard } from '../components/StoreComponents';
+
+type AdminTab = 'dashboard' | 'users' | 'addApps' | 'releases' | 'clients' | 'logs' | 'server';
+
+type AppDraft = {
+  id: string;
+  name: string;
+  shortDescription: string;
+  fullDescription: string;
+  developer: string;
+  category: string;
+  tagsText: string;
+  platformsText: string;
+  visibility: string;
+  featured: boolean;
+};
+
+type ReleaseDraft = {
+  version: string;
+  channel: 'stable' | 'beta' | 'dev';
+  platform: string;
+  entrypoint: string;
+  installType: 'portable' | 'installer';
+  changelog: string;
+};
+
+type PendingMedia = { type: AppMediaType; file: File; previewUrl: string; sortOrder: number };
+
+const blankDraft: AppDraft = {
+  id: '',
+  name: '',
+  shortDescription: '',
+  fullDescription: '',
+  developer: 'Echo Apps',
+  category: 'Utility',
+  tagsText: 'Utility, Echo App',
+  platformsText: 'windows-x64, linux-x64',
+  visibility: 'draft',
+  featured: false,
+};
+
+const blankRelease: ReleaseDraft = {
+  version: '1.0.0',
+  channel: 'stable',
+  platform: 'windows-x64',
+  entrypoint: 'echo-app.json',
+  installType: 'portable',
+  changelog: 'Initial release',
+};
+
+function slugify(value: string): string {
+  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function csv(value: string): string[] {
+  return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function draftToPreview(draft: AppDraft, pending: PendingMedia[], selected?: EchoApp): EchoApp {
+  const pendingMedia = pending.map((item, index) => ({ id: `pending-${index}`, type: item.type, url: item.previewUrl, sortOrder: item.sortOrder }));
+  return {
+    id: draft.id || 'new-echo-app',
+    name: draft.name || 'New Echo App',
+    shortDescription: draft.shortDescription || 'Short Store description appears here.',
+    fullDescription: draft.fullDescription || 'Use this area to explain what the app does, who it is for, and why users should install it.',
+    developer: draft.developer || 'Echo Apps',
+    category: draft.category || 'Utility',
+    tags: csv(draft.tagsText),
+    platforms: csv(draft.platformsText),
+    visibility: draft.visibility,
+    featured: draft.featured,
+    media: [...(selected?.media ?? []), ...pendingMedia],
+    releases: selected?.releases ?? [],
+  };
+}
+
+function useAdminApps() {
+  const [apps, setApps] = useState<EchoApp[]>([]);
+  const [message, setMessage] = useState('');
+  async function load() {
+    try {
+      setApps(await getAdminApps());
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Failed to load apps.');
+    }
+  }
+  return { apps, setApps, load, message, setMessage };
+}
 
 export function AdminPortalPage(props: { user: CurrentUser }) {
-  const [tab, setTab] = useState<'dashboard' | 'users' | 'apps' | 'releases' | 'clients' | 'logs' | 'server'>('dashboard');
+  const [tab, setTab] = useState<AdminTab>('dashboard');
   return (
-    <section className="admin-page"><aside className="admin-tabs"><h1>Admin Portal</h1><button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}>Dashboard</button>{userCan(props.user, 'users.approve') && <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Users</button>}{userCan(props.user, 'apps.create') && <button className={tab === 'apps' ? 'active' : ''} onClick={() => setTab('apps')}>Apps & Media</button>}{userCan(props.user, 'releases.create') && <button className={tab === 'releases' ? 'active' : ''} onClick={() => setTab('releases')}>Releases</button>}{userCan(props.user, 'logs.view') && <button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}>Clients</button>}{userCan(props.user, 'logs.view') && <button className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>Audit Logs</button>}{userCan(props.user, 'server.settings.edit') && <button className={tab === 'server' ? 'active' : ''} onClick={() => setTab('server')}>Server Settings</button>}</aside><div className="admin-content">{tab === 'dashboard' && <AdminDashboard />}{tab === 'users' && <UsersAdmin />}{tab === 'apps' && <AppsAdmin />}{tab === 'releases' && <ReleasesAdmin />}{tab === 'clients' && <ClientsAdmin />}{tab === 'logs' && <LogsAdmin />}{tab === 'server' && <ServerSettingsAdmin />}</div></section>
+    <section className="admin-page">
+      <aside className="admin-tabs">
+        <h1>Admin Portal</h1>
+        <button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}>Dashboard</button>
+        {userCan(props.user, 'users.approve') && <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Users</button>}
+        {userCan(props.user, 'apps.create') && <button className={tab === 'addApps' ? 'active' : ''} onClick={() => setTab('addApps')}>Add Apps</button>}
+        {userCan(props.user, 'releases.create') && <button className={tab === 'releases' ? 'active' : ''} onClick={() => setTab('releases')}>Releases</button>}
+        {userCan(props.user, 'logs.view') && <button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}>Clients</button>}
+        {userCan(props.user, 'logs.view') && <button className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>Audit Logs</button>}
+        {userCan(props.user, 'server.settings.edit') && <button className={tab === 'server' ? 'active' : ''} onClick={() => setTab('server')}>Server Settings</button>}
+      </aside>
+      <div className="admin-content">
+        {tab === 'dashboard' && <AdminDashboard />}
+        {tab === 'users' && <UsersAdmin />}
+        {tab === 'addApps' && <AddAppsAdmin />}
+        {tab === 'releases' && <ReleasesAdmin />}
+        {tab === 'clients' && <ClientsAdmin />}
+        {tab === 'logs' && <LogsAdmin />}
+        {tab === 'server' && <ServerSettingsAdmin />}
+      </div>
+    </section>
   );
 }
 
 function AdminDashboard() {
-  return <div><h2>Dashboard</h2><div className="stats-grid"><div className="stat">Users<span>Approval gate enabled</span></div><div className="stat">Releases<span>Review before publish</span></div><div className="stat">Clients<span>Check-ins tracked</span></div><div className="stat">Server Health<span>Online</span></div></div></div>;
+  return (
+    <div>
+      <h2>Dashboard</h2>
+      <div className="stats-grid">
+        <div className="stat">Add Apps<span>Steam-style Store template builder</span></div>
+        <div className="stat">Users<span>Approval gate enabled</span></div>
+        <div className="stat">Releases<span>Review before publish</span></div>
+        <div className="stat">Clients<span>Check-ins tracked</span></div>
+      </div>
+    </div>
+  );
 }
 
 function UsersAdmin() {
-  const [users, setUsers] = useState<any[]>([]); const [error, setError] = useState('');
+  const [users, setUsers] = useState<any[]>([]);
+  const [error, setError] = useState('');
   function load() { getPendingUsers().then(setUsers).catch((err) => setError(err instanceof Error ? err.message : 'Failed to load users.')); }
   useEffect(load, []);
   return <div><h2>Pending Users</h2>{error && <p className="error">{error}</p>}{users.map((user) => <div className="row" key={user.id}><span><strong>{user.username}</strong> {user.displayName}</span><button onClick={() => approveUser(user.id).then(load)}>Approve</button></div>)}{users.length === 0 && <p className="muted">No pending users.</p>}</div>;
 }
 
-function AppsAdmin() {
-  const [apps, setApps] = useState<EchoApp[]>([]); const [appId, setAppId] = useState('echo-watchtower-sc'); const [name, setName] = useState('Echo Watchtower SC'); const [shortDescription, setShortDescription] = useState('Echo app utility.'); const [fullDescription, setFullDescription] = useState('Managed through Echo App Center.'); const [message, setMessage] = useState(''); const [mediaFile, setMediaFile] = useState<File | null>(null); const [mediaType, setMediaType] = useState('library_banner'); const [bannerUrl, setBannerUrl] = useState('');
-  function load() { getAdminApps().then(setApps).catch(() => undefined); }
-  useEffect(load, []);
-  async function saveApp() { await createApp({ id: appId, name, shortDescription, fullDescription, developer: 'Echo Apps', category: 'Utility', tags: [], visibility: 'published' }); setMessage('App created.'); await load(); }
-  async function saveUrl() { await addMedia(appId, { type: mediaType, url: bannerUrl, sortOrder: 0 }); setMessage('Media URL added.'); await load(); }
-  async function saveFile() { if (!mediaFile) return; await uploadMedia(appId, { type: mediaType, sortOrder: 0, file: mediaFile }); setMessage('Media file uploaded.'); await load(); }
-  return <div><h2>Apps & Media</h2><div className="panel"><label>App ID<input value={appId} onChange={(e) => setAppId(e.target.value)} /></label><label>Name<input value={name} onChange={(e) => setName(e.target.value)} /></label><label>Short Description<input value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} /></label><label>Full Description<textarea value={fullDescription} onChange={(e) => setFullDescription(e.target.value)} /></label><button onClick={saveApp}>Create App</button></div><div className="panel"><h3>Media</h3><label>Media Type<select value={mediaType} onChange={(e) => setMediaType(e.target.value)}><option value="icon">Icon</option><option value="library_banner">Library Banner</option><option value="store_banner">Store Banner</option><option value="screenshot">Screenshot</option></select></label><label>Upload File<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setMediaFile(e.target.files?.[0] ?? null)} /></label><button onClick={saveFile}>Upload Media File</button><label>Or Media URL<input value={bannerUrl} onChange={(e) => setBannerUrl(e.target.value)} /></label><button onClick={saveUrl}>Add Media URL</button></div>{message && <p className="success">{message}</p>}<div className="panel"><h3>Current Apps</h3>{apps.map((app) => <div key={app.id} className="row"><strong>{app.name}</strong><span>{app.visibility}</span><span>{app.media.length} media</span></div>)}</div></div>;
+function DropZone(props: { title: string; hint: string; type: AppMediaType; pending: PendingMedia[]; existingUrl?: string; onAdd: (item: PendingMedia) => void; sortOrder?: number; multiple?: boolean; large?: boolean }) {
+  const preview = props.pending.find((item) => item.type === props.type && !props.multiple);
+  function addFiles(files: FileList | null) {
+    if (!files) return;
+    Array.from(files).forEach((file, index) => {
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) return;
+      props.onAdd({ type: props.type, file, previewUrl: URL.createObjectURL(file), sortOrder: props.sortOrder ?? index });
+    });
+  }
+  const imageUrl = preview?.previewUrl ?? props.existingUrl;
+  return (
+    <label className={`drop-zone ${props.large ? 'large' : ''}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}>
+      {imageUrl ? <img src={imageUrl} alt="" /> : <div><strong>{props.title}</strong><span>{props.hint}</span><small>Drag/drop or click to upload PNG, JPG, WEBP</small></div>}
+      <input type="file" accept="image/png,image/jpeg,image/webp" multiple={props.multiple} onChange={(e) => addFiles(e.target.files)} />
+    </label>
+  );
+}
+
+function AddAppsAdmin() {
+  const { apps, load, message, setMessage } = useAdminApps();
+  const [selectedId, setSelectedId] = useState('');
+  const [draft, setDraft] = useState<AppDraft>(blankDraft);
+  const [pendingMedia, setPendingMedia] = useState<PendingMedia[]>([]);
+  const [releaseDraft, setReleaseDraft] = useState<ReleaseDraft>(blankRelease);
+  const [releaseFile, setReleaseFile] = useState<File | null>(null);
+  const [filter, setFilter] = useState('');
+  const selectedApp = apps.find((app) => app.id === selectedId);
+  const previewApp = draftToPreview(draft, pendingMedia, selectedApp);
+  const filteredApps = useMemo(() => apps.filter((app) => `${app.name} ${app.id} ${app.category}`.toLowerCase().includes(filter.toLowerCase())), [apps, filter]);
+  const requiredChecks = [
+    { label: 'App name', done: Boolean(draft.name.trim()) },
+    { label: 'App ID', done: Boolean(draft.id.trim()) },
+    { label: 'Short description', done: Boolean(draft.shortDescription.trim()) },
+    { label: 'Store hero image', done: Boolean(storeHeroUrl(previewApp)) },
+    { label: 'Icon', done: Boolean(iconUrl(previewApp)) },
+    { label: 'Category', done: Boolean(draft.category.trim()) },
+  ];
+  const recommendedChecks = [
+    { label: 'Library banner', done: Boolean(libraryBannerUrl(previewApp)) },
+    { label: 'Card thumbnail', done: Boolean(cardThumbnailUrl(previewApp)) },
+    { label: '3 screenshots', done: screenshots(previewApp).length >= 3 },
+    { label: 'Release package', done: Boolean(releaseFile) || Boolean((selectedApp?.releases ?? []).length) },
+  ];
+  const readiness = requiredChecks.filter((item) => item.done).length;
+
+  useEffect(() => { load(); }, []);
+
+  function resetBuilder() {
+    setSelectedId('');
+    setDraft(blankDraft);
+    setReleaseDraft(blankRelease);
+    setReleaseFile(null);
+    setPendingMedia([]);
+    setMessage('New app template opened. Fill the Store page and click Post App when ready.');
+  }
+
+  function selectApp(app: EchoApp) {
+    setSelectedId(app.id);
+    setDraft({ id: app.id, name: app.name, shortDescription: app.shortDescription, fullDescription: app.fullDescription, developer: app.developer, category: app.category, tagsText: app.tags.join(', '), platformsText: (app.platforms ?? ['windows-x64', 'linux-x64']).join(', '), visibility: app.visibility, featured: Boolean(app.featured) });
+    setReleaseDraft(blankRelease);
+    setReleaseFile(null);
+    setPendingMedia([]);
+    setMessage(`Editing ${app.name}. Changes are not live until you save or post.`);
+  }
+
+  function addPending(item: PendingMedia) {
+    setPendingMedia((current) => item.type === 'screenshot' ? [...current, { ...item, sortOrder: current.filter((i) => i.type === 'screenshot').length }] : [...current.filter((i) => i.type !== item.type), item]);
+  }
+
+  async function saveApp(nextVisibility = draft.visibility) {
+    if (!draft.name.trim()) { setMessage('App name is required.'); return; }
+    if (!draft.id.trim()) { setMessage('App ID is required.'); return; }
+    if (nextVisibility === 'published' && readiness < requiredChecks.length) { setMessage('Finish the required Store fields before posting this app.'); return; }
+    setMessage(nextVisibility === 'published' ? 'Posting app to Store...' : 'Saving draft...');
+    const payload = { id: draft.id, name: draft.name, shortDescription: draft.shortDescription, fullDescription: draft.fullDescription, developer: draft.developer, category: draft.category, tags: csv(draft.tagsText), platforms: csv(draft.platformsText), visibility: nextVisibility, featured: draft.featured };
+    const app = selectedId ? await updateAppAdmin(selectedId, payload) : await createApp(payload);
+    await setAppFeatured(app.id, draft.featured);
+    await setAppVisibility(app.id, nextVisibility);
+    for (const item of pendingMedia) await uploadMedia(app.id, { type: item.type, sortOrder: item.sortOrder, file: item.file });
+    if (releaseFile) {
+      await uploadReleasePackage(app.id, { file: releaseFile, version: releaseDraft.version, channel: releaseDraft.channel, platform: releaseDraft.platform, entrypoint: releaseDraft.entrypoint, installType: releaseDraft.installType, changelog: releaseDraft.changelog });
+    }
+    setPendingMedia([]);
+    setReleaseFile(null);
+    setSelectedId(app.id);
+    setDraft({ ...draft, visibility: nextVisibility });
+    setMessage(nextVisibility === 'published' ? 'App posted to the Store.' : 'Draft saved.');
+    await load();
+  }
+
+  return (
+    <div className="add-apps-admin">
+      <header className="add-apps-header">
+        <div>
+          <span className="eyebrow">Admin Portal</span>
+          <h2>Add Apps</h2>
+          <p>Build the app page exactly where the Store preview appears. Drag images into the template, add copy, attach a package, then post the app.</p>
+        </div>
+        <button onClick={resetBuilder}>Create New App Page</button>
+      </header>
+
+      {message && <p className="muted">{message}</p>}
+
+      <div className="app-template-window">
+        <aside className="app-template-rail">
+          <h3>Existing Apps</h3>
+          <input placeholder="Search apps" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <button className={!selectedId ? 'active' : ''} onClick={resetBuilder}>+ Blank Store Page</button>
+          <div className="admin-app-list-scroll">
+            {filteredApps.map((app) => <button key={app.id} className={`admin-app-row ${selectedId === app.id ? 'active' : ''}`} onClick={() => selectApp(app)}>{iconUrl(app) ? <img src={iconUrl(app)} /> : <span className="small-icon">E</span>}<span><strong>{app.name}</strong><small>{app.visibility}{app.featured ? ' • Featured' : ''}</small></span></button>)}
+          </div>
+          <div className="builder-checklist">
+            <h3>Ready to Post</h3>
+            <progress max={requiredChecks.length} value={readiness} />
+            {requiredChecks.map((item) => <span key={item.label} className={item.done ? 'done' : ''}>{item.done ? '✓' : '○'} {item.label}</span>)}
+            <h3>Recommended</h3>
+            {recommendedChecks.map((item) => <span key={item.label} className={item.done ? 'done' : 'warn'}>{item.done ? '✓' : '⚠'} {item.label}</span>)}
+          </div>
+        </aside>
+
+        <main className="steam-template-builder">
+          <div className="builder-title-row">
+            <small>All Apps &gt; {draft.category || 'Category'} &gt;</small>
+            <input className="builder-title-input" placeholder="App title" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value, id: selectedId ? draft.id : slugify(e.target.value) })} />
+          </div>
+
+          <section className="builder-product-grid">
+            <div className="builder-media-column">
+              <DropZone large title="Main Store Media / Hero" hint="Recommended 1920x720" type="store_hero" pending={pendingMedia} existingUrl={storeHeroUrl(selectedApp ?? previewApp)} onAdd={addPending} />
+              <div className="builder-filmstrip">
+                {screenshots(previewApp).map((shot) => <img key={shot.id} src={shot.url} />)}
+                <DropZone title="Screenshots" hint="1920x1080, add 3-10" type="screenshot" pending={pendingMedia} onAdd={addPending} multiple />
+              </div>
+            </div>
+
+            <aside className="builder-store-sidebar">
+              <DropZone title="Header / Card Image" hint="600x338 thumbnail" type="card_thumbnail" pending={pendingMedia} existingUrl={cardThumbnailUrl(selectedApp ?? previewApp)} onAdd={addPending} />
+              <DropZone title="App Icon" hint="512x512 icon" type="icon" pending={pendingMedia} existingUrl={iconUrl(selectedApp ?? previewApp)} onAdd={addPending} />
+              <label>Short Store Description<textarea value={draft.shortDescription} onChange={(e) => setDraft({ ...draft, shortDescription: e.target.value })} /></label>
+              <dl>
+                <dt>Developer</dt><dd><input value={draft.developer} onChange={(e) => setDraft({ ...draft, developer: e.target.value })} /></dd>
+                <dt>Category</dt><dd><input value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} /></dd>
+                <dt>App ID</dt><dd><input value={draft.id} disabled={Boolean(selectedId)} onChange={(e) => setDraft({ ...draft, id: slugify(e.target.value) })} /></dd>
+                <dt>Platforms</dt><dd><input value={draft.platformsText} onChange={(e) => setDraft({ ...draft, platformsText: e.target.value })} /></dd>
+              </dl>
+              <label>Tags<input value={draft.tagsText} onChange={(e) => setDraft({ ...draft, tagsText: e.target.value })} /></label>
+              <DropZone title="Library Banner" hint="1920x620" type="library_banner" pending={pendingMedia} existingUrl={libraryBannerUrl(selectedApp ?? previewApp)} onAdd={addPending} />
+            </aside>
+          </section>
+
+          <section className="download-box builder-release-box">
+            <div>
+              <h2>Download {draft.name || 'New Echo App'}</h2>
+              <p>Add the package now or publish the Store page first and upload releases later.</p>
+            </div>
+            <div className="release-mini-form">
+              <label>Version<input value={releaseDraft.version} onChange={(e) => setReleaseDraft({ ...releaseDraft, version: e.target.value })} /></label>
+              <label>Platform<select value={releaseDraft.platform} onChange={(e) => setReleaseDraft({ ...releaseDraft, platform: e.target.value })}><option>windows-x64</option><option>linux-x64</option></select></label>
+              <label>Channel<select value={releaseDraft.channel} onChange={(e) => setReleaseDraft({ ...releaseDraft, channel: e.target.value as ReleaseDraft['channel'] })}><option>stable</option><option>beta</option><option>dev</option></select></label>
+              <label>Entrypoint<input value={releaseDraft.entrypoint} onChange={(e) => setReleaseDraft({ ...releaseDraft, entrypoint: e.target.value })} /></label>
+              <label>Package ZIP<input type="file" accept=".zip" onChange={(e) => setReleaseFile(e.target.files?.[0] ?? null)} /></label>
+            </div>
+          </section>
+
+          <section className="builder-about-section">
+            <h2>About This App</h2>
+            <textarea value={draft.fullDescription} onChange={(e) => setDraft({ ...draft, fullDescription: e.target.value })} />
+          </section>
+
+          <section className="builder-row-preview">
+            <h2>How it will appear in Store rows</h2>
+            <StoreAppCard app={previewApp} />
+          </section>
+        </main>
+      </div>
+
+      <footer className="floating-publish-bar">
+        <label><input type="checkbox" checked={draft.featured} onChange={(e) => setDraft({ ...draft, featured: e.target.checked })} /> Feature on Store homepage</label>
+        <label>Visibility<select value={draft.visibility} onChange={(e) => setDraft({ ...draft, visibility: e.target.value })}><option value="draft">Draft</option><option value="published">Published</option><option value="hidden">Hidden</option><option value="archived">Archived</option></select></label>
+        <button onClick={() => saveApp('draft')}>Save Draft</button>
+        <button className="primary" onClick={() => saveApp('published')}>Post App</button>
+      </footer>
+    </div>
+  );
 }
 
 function ReleasesAdmin() {
@@ -38,9 +334,9 @@ function ReleasesAdmin() {
   useEffect(() => { load().catch((err) => setMessage(err instanceof Error ? err.message : 'Failed to load releases.')); }, []);
   async function upload() { if (!file) { setMessage('Select a package file first.'); return; } await uploadReleasePackage(appId, { file, version, platform, channel, entrypoint, installType: 'portable', changelog }); setMessage('Release package uploaded as draft.'); await load(); }
   async function transition(id: string, action: 'submit' | 'approve' | 'publish' | 'reject' | 'rollback') { if (action === 'submit') await submitRelease(id); if (action === 'approve') await approveRelease(id); if (action === 'publish') await publishRelease(id); if (action === 'reject') await rejectRelease(id, 'Rejected from admin portal.'); if (action === 'rollback') await rollbackRelease(id); await load(); }
-  return <div><h2>Releases</h2><div className="panel"><label>App<select value={appId} onChange={(e) => setAppId(e.target.value)}>{apps.map((app) => <option key={app.id} value={app.id}>{app.name}</option>)}</select></label><div className="details-grid"><label>Version<input value={version} onChange={(e) => setVersion(e.target.value)} /></label><label>Platform<select value={platform} onChange={(e) => setPlatform(e.target.value)}><option>windows-x64</option><option>linux-x64</option></select></label><label>Channel<select value={channel} onChange={(e) => setChannel(e.target.value)}><option>stable</option><option>beta</option><option>dev</option></select></label><label>Entrypoint<input value={entrypoint} onChange={(e) => setEntrypoint(e.target.value)} /></label></div><label>Package Zip<input type="file" accept=".zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label><label>Changelog<textarea value={changelog} onChange={(e) => setChangelog(e.target.value)} /></label><button onClick={upload}>Upload Release Package</button></div>{message && <p className="muted">{message}</p>}<div className="panel"><h3>Release Queue</h3>{releases.map((release) => <div key={release.id} className="release-row"><div><strong>{release.appId}</strong> v{release.version}<small>{release.platform} • {release.channel} • {release.status}</small></div><div className="action-row"><button onClick={() => transition(release.id, 'submit')}>Submit</button><button onClick={() => transition(release.id, 'approve')}>Approve</button><button onClick={() => transition(release.id, 'publish')}>Publish</button><button onClick={() => transition(release.id, 'reject')}>Reject</button><button onClick={() => transition(release.id, 'rollback')}>Rollback</button></div></div>)}</div></div>;
+  return <div><h2>Releases</h2><div className="panel"><label>App<select value={appId} onChange={(e) => setAppId(e.target.value)}>{apps.map((app) => <option key={app.id} value={app.id}>{app.name}</option>)}</select></label><div className="details-grid"><label>Version<input value={version} onChange={(e) => setVersion(e.target.value)} /></label><label>Platform<select value={platform} onChange={(e) => setPlatform(e.target.value)}><option>windows-x64</option><option>linux-x64</option></select></label><label>Channel<select value={channel} onChange={(e) => setChannel(e.target.value)}><option>stable</option><option>beta</option><option>dev</option></select></label><label>Entrypoint<input value={entrypoint} onChange={(e) => setEntrypoint(e.target.value)} /></label></div><label>Package Zip<input type="file" accept=".zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></label><label>Changelog<textarea value={changelog} onChange={(e) => setChangelog(e.target.value)} /></label><button onClick={upload}>Upload Release Package</button></div>{message && <p className="muted">{message}</p>}<div className="panel"><h3>Release Queue</h3>{releases.map((rel) => <div className="release-row" key={rel.id}><div><strong>{rel.appId} v{rel.version}</strong><small>{rel.platform} • {rel.channel} • {rel.status}</small></div><div className="action-row"><button onClick={() => transition(rel.id, 'submit')}>Submit</button><button onClick={() => transition(rel.id, 'approve')}>Approve</button><button onClick={() => transition(rel.id, 'publish')}>Publish</button><button onClick={() => transition(rel.id, 'reject')}>Reject</button><button onClick={() => transition(rel.id, 'rollback')}>Rollback</button></div></div>)}</div></div>;
 }
 
-function ClientsAdmin() { const [data, setData] = useState<{ clients: any[]; installReports: any[] }>({ clients: [], installReports: [] }); useEffect(() => { getClients().then(setData).catch(() => undefined); }, []); return <div><h2>Client Computers</h2><div className="panel">{data.clients.map((client) => <div key={client.id} className="row"><strong>{client.name}</strong><span>{client.platform}</span><span>{client.lastCheckInAt}</span><span>{client.installedApps?.length ?? 0} apps</span></div>)}{data.clients.length === 0 && <p className="muted">No client check-ins yet.</p>}</div><h3>Install Reports</h3><div className="panel">{data.installReports.map((report) => <div key={report.id} className="row"><strong>{report.appId}</strong><span>{report.action}</span><span>{report.status}</span><span>{report.message}</span></div>)}</div></div>; }
-function LogsAdmin() { const [logs, setLogs] = useState<any[]>([]); useEffect(() => { getAuditLogs().then(setLogs).catch(() => undefined); }, []); return <div><h2>Audit Logs</h2><div className="panel">{logs.map((log) => <div key={log.id} className="row"><strong>{log.action}</strong><span>{log.targetType}</span><span>{log.createdAt}</span></div>)}</div></div>; }
-function ServerSettingsAdmin() { const [settings, setSettings] = useState<any>(null); const [error, setError] = useState(''); useEffect(() => { getServerRuntimeSettings().then(setSettings).catch((err) => setError(err instanceof Error ? err.message : 'Failed to load server settings.')); }, []); return <div><h2>Server Settings</h2>{error && <p className="error">{error}</p>}{settings && <div className="panel"><p className="muted">Server host and port are controlled by `.env` and require a server restart.</p><div className="details-grid"><div><small>Host bind</small><strong>{settings.host}</strong></div><div><small>Port</small><strong>{settings.port}</strong></div><div><small>Public base URL</small><strong>{settings.publicBaseUrl}</strong></div><div><small>Data folder</small><strong>{settings.dataDir}</strong></div></div><pre>{`ECHO_SERVER_HOST=${settings.host}\nECHO_SERVER_PORT=${settings.port}\nECHO_PUBLIC_BASE_URL=${settings.publicBaseUrl}`}</pre></div>}</div>; }
+function ClientsAdmin() { const [data, setData] = useState<{ clients: any[]; installReports: any[] }>({ clients: [], installReports: [] }); useEffect(() => { getClients().then(setData).catch(() => undefined); }, []); return <div><h2>Client Computers</h2><div className="panel">{data.clients.map((client) => <div className="row" key={client.id}><strong>{client.name}</strong><span>{client.platform}</span><span>{client.lastCheckInAt}</span></div>)}{data.clients.length === 0 && <p className="muted">No clients have checked in.</p>}</div></div>; }
+function LogsAdmin() { const [logs, setLogs] = useState<any[]>([]); useEffect(() => { getAuditLogs().then(setLogs).catch(() => undefined); }, []); return <div><h2>Audit Logs</h2><div className="panel">{logs.slice(0, 50).map((log) => <pre key={log.id}>{JSON.stringify(log, null, 2)}</pre>)}</div></div>; }
+function ServerSettingsAdmin() { const [settings, setSettings] = useState<any>(); useEffect(() => { getServerRuntimeSettings().then(setSettings).catch(() => undefined); }, []); return <div><h2>Server Settings</h2><pre>{JSON.stringify(settings, null, 2)}</pre></div>; }
