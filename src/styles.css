@@ -269,3 +269,42 @@ button { white-space: nowrap; }
   .builder-window-shell .app-template-window { height: auto; overflow: visible; }
   .builder-window-shell .steam-template-builder { overflow: visible; }
 }
+
+
+/* Release QA v10 - Store Layout Creator */
+.store-layout-builder-shell { height: 100vh; min-height: 100vh; display: grid; grid-template-rows: auto auto minmax(0, 1fr); background: linear-gradient(180deg, #17263a, #07111c); overflow: hidden; }
+.store-layout-topbar { position: relative; top: auto; }
+.layout-message { margin: 8px 18px; }
+.store-layout-builder-grid { min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr) 340px; gap: 0; border-top: 1px solid #26394f; }
+.sims-catalog-panel, .store-layout-inspector { min-height: 0; overflow: auto; background: #0d1725; border-right: 1px solid #26394f; padding: 16px; }
+.store-layout-inspector { border-right: 0; border-left: 1px solid #26394f; }
+.catalog-heading h2, .store-layout-inspector h2 { margin: 4px 0 8px; }
+.catalog-heading p { color: #91abc3; margin-top: 0; }
+.sims-catalog-panel details { border: 1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 10px; margin: 10px 0; background: rgba(255,255,255,.035); }
+.sims-catalog-panel summary { cursor: pointer; font-weight: 800; color: #dbeafe; }
+.component-tile-grid { display: grid; gap: 8px; margin-top: 10px; }
+.component-tile-grid button { text-align: left; background: linear-gradient(180deg, #203855, #13263a); border: 1px solid #315878; display: grid; gap: 4px; white-space: normal; }
+.component-tile-grid small, .catalog-app-chip small { color: #9fb3c8; }
+.catalog-category-button { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 8px; background: #13243a; }
+.catalog-category-button span { border-radius: 999px; background: rgba(255,255,255,.12); padding: 2px 8px; }
+.catalog-app-list { display: grid; gap: 8px; padding: 8px 0; }
+.catalog-app-chip { display: grid; grid-template-columns: 34px 1fr; gap: 8px; align-items: center; padding: 8px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.045); border-radius: 10px; cursor: grab; }
+.catalog-app-chip img { width: 34px; height: 34px; object-fit: cover; border-radius: 4px; }
+.store-layout-canvas { min-height: 0; overflow: auto; background: #0d1b2a; padding: 18px 0 48px; }
+.layout-canvas-header { width: min(1180px, 90vw); margin: 0 auto 18px; display: grid; grid-template-columns: 1fr minmax(260px, 420px); gap: 16px; align-items: end; }
+.layout-section-frame { width: min(1220px, 92vw); margin: 0 auto 18px; border: 1px solid rgba(103, 197, 255, .18); background: rgba(255,255,255,.025); box-shadow: 0 18px 50px rgba(0,0,0,.22); }
+.layout-section-frame.active { border-color: rgba(103, 197, 255, .75); box-shadow: 0 0 0 2px rgba(103,197,255,.14), 0 18px 50px rgba(0,0,0,.3); }
+.layout-section-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; background: rgba(4, 9, 16, .74); border-bottom: 1px solid rgba(255,255,255,.08); }
+.layout-section-toolbar span { color: #91abc3; text-transform: uppercase; font-size: 12px; letter-spacing: .08em; }
+.layout-section-drop-hint { padding: 6px 12px; color: #91abc3; font-size: 12px; background: rgba(255,255,255,.025); }
+.store-layout-promo { width: min(1180px, 90vw); margin: 28px auto; padding: 30px; border: 1px solid rgba(125, 211, 252, .28); background: radial-gradient(circle at top left, rgba(37,99,235,.28), rgba(15,23,42,.92) 60%); box-shadow: 0 18px 50px rgba(0,0,0,.28); }
+.store-layout-promo h2 { width: auto; margin: 4px 0 8px; }
+.store-layout-spacer { height: 36px; }
+.layout-preview-tabs { pointer-events: none; opacity: .9; }
+.store-layout-inspector textarea { min-height: 100px; }
+@media (max-width: 1180px) {
+  .store-layout-builder-shell { overflow: auto; display: block; }
+  .store-layout-builder-grid { grid-template-columns: 1fr; }
+  .sims-catalog-panel, .store-layout-inspector { max-height: none; border: 0; border-bottom: 1px solid #26394f; }
+  .layout-canvas-header { grid-template-columns: 1fr; }
+}

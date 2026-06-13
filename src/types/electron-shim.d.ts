@@ -11,6 +11,8 @@ declare global {
   interface Window {
     echoDesktop?: {
       openAppBuilder: (appId?: string) => Promise<{ ok: boolean }>;
+      openStoreLayoutBuilder: () => Promise<{ ok: boolean }>;
+      closeStoreLayoutBuilder: () => Promise<{ ok: boolean }>;
       focusMainWindow: () => Promise<{ ok: boolean }>;
       closeBuilderWindow: () => Promise<{ ok: boolean }>;
       onBuilderSelectApp: (callback: (appId: string) => void) => () => void;

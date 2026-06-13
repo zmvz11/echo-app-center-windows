@@ -5,8 +5,9 @@ import { userCan } from '../types/auth';
 import type { AppMediaType, EchoApp, AppRelease } from '../types/catalog';
 import { cardThumbnailUrl, iconUrl, libraryBannerUrl, screenshots, storeHeroUrl } from '../types/catalog';
 import { StoreAppCard } from '../components/StoreComponents';
+import { StoreLayoutBuilderPage } from './StoreLayoutBuilderPage';
 
-type AdminTab = 'dashboard' | 'users' | 'addApps' | 'releases' | 'clients' | 'logs' | 'server';
+type AdminTab = 'dashboard' | 'users' | 'addApps' | 'storeLayout' | 'releases' | 'clients' | 'logs' | 'server';
 
 type AppDraft = {
   id: string;
@@ -119,6 +120,7 @@ export function AdminPortalPage(props: { user: CurrentUser }) {
         <button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}>Dashboard</button>
         {userCan(props.user, 'users.approve') && <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}>Users</button>}
         {userCan(props.user, 'apps.create') && <button className={tab === 'addApps' ? 'active' : ''} onClick={() => setTab('addApps')}>Add Apps</button>}
+        {userCan(props.user, 'apps.edit') && <button className={tab === 'storeLayout' ? 'active' : ''} onClick={() => setTab('storeLayout')}>Store Layout</button>}
         {userCan(props.user, 'releases.create') && <button className={tab === 'releases' ? 'active' : ''} onClick={() => setTab('releases')}>Releases</button>}
         {userCan(props.user, 'logs.view') && <button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}>Clients</button>}
         {userCan(props.user, 'logs.view') && <button className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>Audit Logs</button>}
@@ -128,6 +130,7 @@ export function AdminPortalPage(props: { user: CurrentUser }) {
         {tab === 'dashboard' && <AdminDashboard />}
         {tab === 'users' && <UsersAdmin />}
         {tab === 'addApps' && <AddAppsLauncher />}
+        {tab === 'storeLayout' && <StoreLayoutLauncher />}
         {tab === 'releases' && <ReleasesAdmin />}
         {tab === 'clients' && <ClientsAdmin />}
         {tab === 'logs' && <LogsAdmin />}
@@ -548,6 +551,34 @@ function AddAppsLauncher() {
       </section>
       {message && <p className="muted">{message}</p>}
       <section className="panel"><h3>Existing Store Apps</h3>{apps.length === 0 && <p className="muted">No apps exist yet. Open the builder and create the first Store page.</p>}<div className="app-management-grid">{apps.map((app) => <button className="app-management-card" key={app.id} onClick={() => openBuilder(app.id)}>{iconUrl(app) ? <img src={iconUrl(app)} /> : <span className="small-icon">E</span>}<span><strong>{app.name}</strong><small>{app.visibility}{app.featured ? ' • Featured' : ''} • {app.category}</small></span></button>)}</div></section>
+    </div>
+  );
+}
+
+
+function StoreLayoutLauncher() {
+  async function openLayoutBuilder() {
+    if (window.echoDesktop?.openStoreLayoutBuilder) {
+      await window.echoDesktop.openStoreLayoutBuilder();
+      return;
+    }
+    window.open(`${window.location.origin}${window.location.pathname}#store-layout-builder`, 'echo-store-layout-builder', 'width=1720,height=980');
+  }
+  return (
+    <div className="add-apps-launcher">
+      <section className="add-apps-launcher-hero">
+        <div>
+          <span className="eyebrow">Admin Portal</span>
+          <h2>Store Layout</h2>
+          <p>Open the dedicated Store Layout Creator to arrange the Store homepage with draggable heroes, rows, grids, promos, categories, and app cards.</p>
+          <div className="product-badges"><span>Separate Layout Window</span><span>Drag/Drop Shelves</span><span>App Catalog Palette</span><span>Publish Store Layout</span></div>
+        </div>
+        <div className="launcher-actions"><button type="button" className="primary" onClick={openLayoutBuilder}>Open Store Layout Creator</button></div>
+      </section>
+      <section className="panel">
+        <h3>What this controls</h3>
+        <p className="muted">This editor controls the Store homepage layout users see in Echo App Center. Add rows, choose categories, pin apps manually, and publish the final layout.</p>
+      </section>
     </div>
   );
 }

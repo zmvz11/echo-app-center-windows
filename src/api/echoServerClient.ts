@@ -1,6 +1,6 @@
 import { getServerUrl, getToken, setToken, clearToken } from '../auth/sessionStore';
 import type { CurrentUser } from '../types/auth';
-import type { EchoApp, AppRelease, StoreSection, GitHubAppSource, PackageValidationReport, DownloadLocation, EchoNode, EchoNodeRequest, NodeAdminState, NodePermissions } from '../types/catalog';
+import type { EchoApp, AppRelease, StoreSection, StoreLayout, GitHubAppSource, PackageValidationReport, DownloadLocation, EchoNode, EchoNodeRequest, NodeAdminState, NodePermissions } from '../types/catalog';
 
 const DEFAULT_TIMEOUT_MS = 6000;
 const CONNECT_TIMEOUT_MS = 3000;
@@ -92,6 +92,8 @@ export async function getStoreApps(): Promise<EchoApp[]> { const data = await re
 export async function getFeaturedApps(): Promise<EchoApp[]> { const data = await request<{ apps: EchoApp[] }>('/api/store/featured'); return data.apps; }
 export async function getStoreSections(): Promise<StoreSection[]> { const data = await request<{ sections: StoreSection[] }>('/api/store/sections'); return data.sections; }
 export async function getStoreCategories(): Promise<string[]> { const data = await request<{ categories: string[] }>('/api/store/categories'); return data.categories; }
+export async function getStoreLayout(): Promise<StoreLayout> { const data = await request<{ layout: StoreLayout }>('/api/store/layout'); return data.layout; }
+export async function saveStoreLayout(input: StoreLayout): Promise<StoreLayout> { const data = await request<{ layout: StoreLayout }>('/api/store/admin/layout', { method: 'PATCH', body: JSON.stringify(input) }); return data.layout; }
 export async function getStoreApp(id: string): Promise<EchoApp> { const data = await request<{ app: EchoApp }>(`/api/store/apps/${id}`); return data.app; }
 
 export async function getAdminApps(): Promise<EchoApp[]> { const data = await request<{ apps: EchoApp[] }>('/api/apps/admin/all'); return data.apps; }

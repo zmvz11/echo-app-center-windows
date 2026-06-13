@@ -1,4 +1,25 @@
 
+export type StoreLayoutSectionType = 'hero' | 'app_row' | 'app_grid' | 'category_row' | 'category_tabs' | 'promo' | 'spacer';
+export type StoreLayoutSource = 'manual' | 'featured' | 'recently_updated' | 'category' | 'all';
+export type StoreLayoutSection = {
+  id: string;
+  type: StoreLayoutSectionType;
+  title: string;
+  enabled: boolean;
+  source: StoreLayoutSource;
+  appIds: string[];
+  category?: string;
+  limit: number;
+  note?: string;
+};
+export type StoreLayout = {
+  id: string;
+  title: string;
+  status: 'draft' | 'published';
+  updatedAt?: string;
+  sections: StoreLayoutSection[];
+};
+
 export type NodeRole = 'primary' | 'download_mirror' | 'standby_backup' | 'full_backup';
 export type NodePermissionKey = 'canPullPackages' | 'canPullMedia' | 'canServeDownloads' | 'canPullDatabaseBackup' | 'canBePromoted' | 'canRunAdminApi';
 export type NodePermissions = Record<NodePermissionKey, boolean>;
@@ -84,6 +105,8 @@ export type EchoApp = {
   media: AppMedia[];
   releases?: AppRelease[];
   githubSource?: GitHubAppSource;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type StoreSection = {

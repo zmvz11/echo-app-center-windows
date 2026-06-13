@@ -8,6 +8,7 @@ import { DownloadsPage } from './pages/DownloadsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AdminPortalPage } from './pages/AdminPortalPage';
 import { AddAppsAdmin } from './pages/AdminPortalPage';
+import { StoreLayoutBuilderPage } from './pages/StoreLayoutBuilderPage';
 import { me, logout } from './api/echoServerClient';
 import { checkInClient } from './api/localAgentClient';
 import { clearToken, getToken } from './auth/sessionStore';
@@ -19,9 +20,11 @@ export type Page = 'login' | 'create' | 'setup' | 'store' | 'library' | 'downloa
 export function App() {
   const hash = window.location.hash;
   const isBuilderWindow = hash.startsWith('#app-builder');
+  const isStoreLayoutBuilderWindow = hash.startsWith('#store-layout-builder');
   const builderHashParams = new URLSearchParams(hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '');
   const initialBuilderAppId = builderHashParams.get('appId') ?? '';
   if (isBuilderWindow) return <AddAppsAdmin windowMode initialAppId={initialBuilderAppId} />;
+  if (isStoreLayoutBuilderWindow) return <StoreLayoutBuilderPage />;
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [page, setPage] = useState<Page>('login');
   const [loading, setLoading] = useState(true);

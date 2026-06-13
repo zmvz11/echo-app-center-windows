@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let mainWindow: BrowserWindow | null = null;
 let builderWindow: BrowserWindow | null = null;
+let storeLayoutWindow: BrowserWindow | null = null;
 let agentServer: { close: (callback?: () => void) => void } | null = null;
 
 function webPreferences() {
@@ -27,7 +28,7 @@ async function startLocalAgent(): Promise<void> {
 
 function attachExternalLinkHandler(win: BrowserWindow): void {
   win.webContents.setWindowOpenHandler(({ url }: { url: string }) => {
-    if (url.startsWith('file:') || url.includes('#app-builder')) return { action: 'allow' };
+    if (url.startsWith('file:') || url.includes('#app-builder') || url.includes('#store-layout-builder')) return { action: 'allow' };
     shell.openExternal(url);
     return { action: 'deny' };
   });
@@ -78,9 +79,43 @@ function createBuilderWindow(appId?: string): void {
   builderWindow.on('closed', () => { builderWindow = null; });
 }
 
+
+function createStoreLayoutWindow(): void {
+  if (storeLayoutWindow && !storeLayoutWindow.isDestroyed()) {
+    storeLayoutWindow.focus();
+    return;
+  }
+
+  storeLayoutWindow = new BrowserWindow({
+    width: 1720,
+    height: 980,
+    minWidth: 1240,
+    minHeight: 780,
+    title: 'Echo Store Layout Creator',
+    autoHideMenuBar: true,
+    backgroundColor: '#0f172a',
+    parent: mainWindow ?? undefined,
+    modal: false,
+    webPreferences: webPreferences(),
+  });
+
+  attachExternalLinkHandler(storeLayoutWindow);
+  const indexPath = join(__dirname, '../dist/index.html');
+  void storeLayoutWindow.loadFile(indexPath, { hash: 'store-layout-builder' });
+  storeLayoutWindow.on('closed', () => { storeLayoutWindow = null; });
+}
+
 function registerIpc(): void {
   ipcMain.handle('echo:open-app-builder', (_event: unknown, appId?: string) => {
     createBuilderWindow(appId);
+    return { ok: true };
+  });
+  ipcMain.handle('echo:open-store-layout-builder', () => {
+    createStoreLayoutWindow();
+    return { ok: true };
+  });
+  ipcMain.handle('echo:close-store-layout-builder', () => {
+    if (storeLayoutWindow && !storeLayoutWindow.isDestroyed()) storeLayoutWindow.close();
     return { ok: true };
   });
   ipcMain.handle('echo:focus-main-window', () => {

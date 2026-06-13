@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getCatalog, getStoreApps, getStoreCategories, getStoreSections } from '../api/echoServerClient';
+import { getCatalog, getStoreApps, getStoreCategories, getStoreLayout, getStoreSections } from '../api/echoServerClient';
 import { installApp, launchApp, listInstalledApps, updateApp } from '../api/localAgentClient';
-import type { EchoApp, InstalledApp, StoreSection } from '../types/catalog';
+import type { EchoApp, InstalledApp, StoreLayout, StoreLayoutSection, StoreSection } from '../types/catalog';
 import { latestStableRelease, storeHeroUrl } from '../types/catalog';
 import { getDefaultPlatform } from '../platform/platform';
 import { StoreAppCard, StoreAppDetail, StoreHero, StoreSectionRow } from '../components/StoreComponents';
@@ -11,6 +11,7 @@ type StoreMode = 'browse' | 'recommendations' | 'categories' | 'special';
 export function StorePage() {
   const [apps, setApps] = useState<EchoApp[]>([]);
   const [sections, setSections] = useState<StoreSection[]>([]);
+  const [layout, setLayout] = useState<StoreLayout | null>(null);
   const [categories, setCategories] = useState<string[]>(['All']);
   const [installed, setInstalled] = useState<InstalledApp[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
@@ -25,15 +26,17 @@ export function StorePage() {
   async function load() {
     setMessage('Loading Store...');
     try {
-      const [storeApps, storeSections, cats, local] = await Promise.all([
+      const [storeApps, storeSections, cats, storeLayout, local] = await Promise.all([
         getStoreApps(),
         getStoreSections().catch(() => []),
         getStoreCategories().catch(() => []),
+        getStoreLayout().catch(() => null),
         listInstalledApps().catch(() => []),
       ]);
       setApps(storeApps);
       setSections(storeSections);
       setCategories(['All', ...cats.filter((cat) => cat !== 'All')]);
+      setLayout(storeLayout);
       setInstalled(local);
       setMessage('');
     } catch (error) {
@@ -41,6 +44,7 @@ export function StorePage() {
         const [catalogApps, local] = await Promise.all([getCatalog(), listInstalledApps().catch(() => [])]);
         setApps(catalogApps.filter((app) => app.visibility === 'published'));
         setSections([]);
+        setLayout(null);
         setCategories(['All', ...Array.from(new Set(catalogApps.map((app) => app.category).filter(Boolean)))]);
         setInstalled(local);
         setMessage('Store API was unavailable, so Echo App Center loaded the catalog fallback. Update Echo App Server to Store API v2 for the full Store layout.');
@@ -87,6 +91,35 @@ export function StorePage() {
     }
   }
 
+
+  function appsForLayoutSection(section: StoreLayoutSection): EchoApp[] {
+    let selectedApps: EchoApp[] = [];
+    if (section.source === 'manual') selectedApps = section.appIds.map((id) => apps.find((app) => app.id === id)).filter(Boolean) as EchoApp[];
+    if (section.source === 'featured') selectedApps = apps.filter((app) => app.featured);
+    if (section.source === 'category') selectedApps = apps.filter((app) => app.category === section.category);
+    if (section.source === 'recently_updated') selectedApps = [...apps].sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
+    if (section.source === 'all') selectedApps = [...apps];
+    if (section.source !== 'manual' && section.appIds.length) {
+      const pinned = section.appIds.map((id) => apps.find((app) => app.id === id)).filter(Boolean) as EchoApp[];
+      selectedApps = [...pinned, ...selectedApps.filter((app) => !section.appIds.includes(app.id))];
+    }
+    return selectedApps.slice(0, Math.max(1, section.limit || 8));
+  }
+
+  function renderLayoutSection(section: StoreLayoutSection) {
+    if (!section.enabled) return null;
+    const sectionApps = appsForLayoutSection(section);
+    if (section.type === 'spacer') return <div key={section.id} className="store-layout-spacer" />;
+    if (section.type === 'promo') return <section key={section.id} className="store-layout-promo"><span className="eyebrow">Echo Store</span><h2>{section.title}</h2><p>{section.note || 'Featured Echo apps and updates.'}</p></section>;
+    if (section.type === 'category_tabs') return <div key={section.id} className="category-tabs" ref={categoryRef}>{categories.map((category) => <button key={category} className={activeCategory === category ? 'active' : ''} onClick={() => { setActiveCategory(category); setMode('browse'); }}>{category}</button>)}</div>;
+    if (section.type === 'hero') {
+      const heroApp = sectionApps[0];
+      return heroApp ? <StoreHero key={section.id} app={heroApp} onOpen={() => setSelectedId(heroApp.id)} onAction={() => runAction(heroApp)} actionLabel={actionState(heroApp) === 'launch' ? 'Launch' : actionState(heroApp) === 'update' ? 'Update' : actionState(heroApp) === 'disabled' ? 'No Release' : 'Install'} /> : null;
+    }
+    if (section.type === 'app_grid') return <section key={section.id}><h2>{section.title}</h2><div className="store-feature-grid">{sectionApps.map((app) => <StoreAppCard key={app.id} app={app} state={actionState(app)} onOpen={() => setSelectedId(app.id)} onAction={() => runAction(app)} />)}</div></section>;
+    return <StoreSectionRow key={section.id} title={section.title} apps={sectionApps} onOpen={(app) => setSelectedId(app.id)} onAction={runAction} onSeeMore={() => { setMode('special'); setActiveCategory('All'); }} />;
+  }
+
   function setTopMode(next: StoreMode): void {
     setMode(next);
     if (next === 'browse') { setActiveCategory('All'); setQuery(''); }
@@ -104,11 +137,17 @@ export function StorePage() {
     <section className="steam-store-page">
       <div className="store-topbar"><nav><button className={mode === 'browse' ? 'active' : ''} onClick={() => setTopMode('browse')}>Browse</button><button className={mode === 'recommendations' ? 'active' : ''} onClick={() => setTopMode('recommendations')}>Recommendations</button><button className={mode === 'categories' ? 'active' : ''} onClick={() => setTopMode('categories')}>Categories</button><button className={mode === 'special' ? 'active' : ''} onClick={() => setTopMode('special')}>Special Sections</button></nav><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search the store" /></div>
       {message && <p className={message.includes('failed') || message.includes('404') ? 'error' : 'muted'}>{message}</p>}
-      {hero ? <StoreHero app={hero} onOpen={() => setSelectedId(hero.id)} onAction={() => runAction(hero)} actionLabel={actionState(hero) === 'launch' ? 'Launch' : actionState(hero) === 'update' ? 'Update' : actionState(hero) === 'disabled' ? 'No Release' : 'Install'} /> : <div className="store-empty"><h1>No apps published yet.</h1><p>Open Admin Portal → Add Apps to add your first Echo app.</p></div>}
-      <div className="category-tabs" ref={categoryRef}>{categories.map((category) => <button key={category} className={activeCategory === category ? 'active' : ''} onClick={() => { setActiveCategory(category); setMode('browse'); }}>{category}</button>)}</div>
-      {filteredApps.length > 0 && <section><h2>{mode === 'special' ? 'Special Sections' : 'Featured & Recommended'}</h2><div className="store-feature-grid">{filteredApps.slice(0, 8).map((app) => <StoreAppCard key={app.id} app={app} state={actionState(app)} onOpen={() => setSelectedId(app.id)} onAction={() => runAction(app)} />)}</div></section>}
-      <div ref={sectionsRef}>{sections.filter((section) => section.apps.length > 0).map((section) => <StoreSectionRow key={section.id} title={section.title} apps={section.apps} onOpen={(app) => setSelectedId(app.id)} onAction={runAction} onSeeMore={() => { setMode('special'); setActiveCategory('All'); }} />)}</div>
-      {filteredApps.length === 0 && apps.length > 0 && <div className="store-empty"><h2>No matches.</h2><p>Try a different search or category.</p></div>}
+      {layout?.status === 'published' && layout.sections.length > 0 ? (
+        <div ref={sectionsRef}>{layout.sections.map((section) => renderLayoutSection(section))}</div>
+      ) : (
+        <>
+          {hero ? <StoreHero app={hero} onOpen={() => setSelectedId(hero.id)} onAction={() => runAction(hero)} actionLabel={actionState(hero) === 'launch' ? 'Launch' : actionState(hero) === 'update' ? 'Update' : actionState(hero) === 'disabled' ? 'No Release' : 'Install'} /> : <div className="store-empty"><h1>No apps published yet.</h1><p>Open Admin Portal → Add Apps to add your first Echo app.</p></div>}
+          <div className="category-tabs" ref={categoryRef}>{categories.map((category) => <button key={category} className={activeCategory === category ? 'active' : ''} onClick={() => { setActiveCategory(category); setMode('browse'); }}>{category}</button>)}</div>
+          {filteredApps.length > 0 && <section><h2>{mode === 'special' ? 'Special Sections' : 'Featured & Recommended'}</h2><div className="store-feature-grid">{filteredApps.slice(0, 8).map((app) => <StoreAppCard key={app.id} app={app} state={actionState(app)} onOpen={() => setSelectedId(app.id)} onAction={() => runAction(app)} />)}</div></section>}
+          <div ref={sectionsRef}>{sections.filter((section) => section.apps.length > 0).map((section) => <StoreSectionRow key={section.id} title={section.title} apps={section.apps} onOpen={(app) => setSelectedId(app.id)} onAction={runAction} onSeeMore={() => { setMode('special'); setActiveCategory('All'); }} />)}</div>
+        </>
+      )}
+      {filteredApps.length === 0 && apps.length > 0 && !layout && <div className="store-empty"><h2>No matches.</h2><p>Try a different search or category.</p></div>}
     </section>
   );
 }
